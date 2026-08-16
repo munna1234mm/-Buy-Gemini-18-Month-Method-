@@ -81,15 +81,19 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         pass
 
 def run_health_server():
-    port = int(os.getenv("PORT", "8080"))
+    port = int(os.getenv("PORT", "10000"))
     try:
         server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+        logger.info(f"Health check HTTP server is listening on port {port}")
         server.serve_forever()
     except Exception as e:
         logger.warning(f"Could not start HTTP health server on port {port}: {e}")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log the error without terminating the bot."""
+    if "Conflict" in str(context.error):
+        logger.warning("Another bot instance is running. Terminating conflicts...")
+        return
     logger.error("Exception while handling an update:", exc_info=context.error)
 
 
