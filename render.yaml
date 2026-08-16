@@ -1,5 +1,5 @@
 services:
-  - type: worker
+  - type: web
     name: telegram-referral-bot
     runtime: python
     buildCommand: pip install -r requirements.txt
@@ -15,3 +15,5 @@ services:
         value: "USDT"
       - key: GEMINI_METHOD_LINK
         value: "https://t.me/SARKAR_COMPUTER"
+      - key: PORT
+        value: "8080"

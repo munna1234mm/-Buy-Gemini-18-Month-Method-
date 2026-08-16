@@ -66,12 +66,37 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(b"Telegram Bot is Active 24/7!")
+
+    def log_message(self, format, *args):
+        pass
+
+def run_health_server():
+    port = int(os.getenv("PORT", "8080"))
+    try:
+        server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+        server.serve_forever()
+    except Exception as e:
+        logger.warning(f"Could not start HTTP health server on port {port}: {e}")
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log the error without terminating the bot."""
     logger.error("Exception while handling an update:", exc_info=context.error)
 
 
 def main():
+    # Start Keep-Alive HTTP server on a separate daemon thread
+    threading.Thread(target=run_health_server, daemon=True).start()
+
     # Initialize SQLite Database
     database.init_db()
 
