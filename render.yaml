@@ -1,0 +1,17 @@
+services:
+  - type: worker
+    name: telegram-referral-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        value: "6575066703"
+      - key: DEFAULT_REFERRAL_REWARD
+        value: "0.5"
+      - key: CURRENCY_NAME
+        value: "USDT"
+      - key: GEMINI_METHOD_LINK
+        value: "https://t.me/SARKAR_COMPUTER"
