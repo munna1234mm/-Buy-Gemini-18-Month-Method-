@@ -108,15 +108,24 @@ async def admin_menu_callback_handler(update: Update, context: ContextTypes.DEFA
         currency = database.get_setting("currency_name", config.CURRENCY_NAME)
         content_preview = database.get_setting("gemini_method_content", "No content set yet.")
 
+        # Strip HTML for preview safely to prevent Telegram parse errors
+        import re
+        clean_preview = re.sub(r'<[^>]+>', '', content_preview).strip()
+        if len(clean_preview) > 180:
+            clean_preview = clean_preview[:180] + "..."
+
         text = (
             f"💎 <b>Gemini 18 Month Method Settings</b>\n\n"
             f"👥 <b>Required Referrals to Unlock:</b> <code>{required_refs} invites</code>\n"
             f"💵 <b>USDT Price:</b> <code>{method_price} {currency}</code>\n\n"
-            f"📝 <b>Current Method Content / Details:</b>\n"
-            f"<blockquote>{content_preview[:300]}...</blockquote>\n\n"
+            f"📝 <b>Current Content Preview:</b>\n"
+            f"<i>{clean_preview}</i>\n\n"
             f"<i>Choose an option below to update:</i>"
         )
-        await query.edit_message_text(text, reply_markup=get_gemini_settings_keyboard(), parse_mode=ParseMode.HTML)
+        try:
+            await query.edit_message_text(text, reply_markup=get_gemini_settings_keyboard(), parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(text, reply_markup=get_gemini_settings_keyboard(), parse_mode=ParseMode.HTML)
 
     elif data == "admin_channels":
         channels = database.get_all_channels()
@@ -378,15 +387,22 @@ async def broadcast_received(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def set_gemini_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Prompts admin for new method content/text/links."""
     query = update.callback_query
-    await query.answer()
+    if query:
+        await query.answer()
 
     text = (
         f"📝 <b>Edit Gemini 18 Month Method Content</b>\n\n"
         f"Send the complete text, guide, instructions, accounts, or links that users will see when they unlock/purchase the method.\n\n"
-        f"<i>Supports Telegram HTML formatting.</i>\n\n"
+        f"<i>Supports Telegram text & formatting.</i>\n\n"
         f"Send /cancel to abort."
     )
-    await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
+    if query:
+        try:
+            await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
+    elif update.message:
+        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
     return STATE_SET_GEMINI_CONTENT
 
 
@@ -408,7 +424,8 @@ async def set_gemini_content_received(update: Update, context: ContextTypes.DEFA
 async def set_gemini_refs_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Prompts admin for required referrals limit."""
     query = update.callback_query
-    await query.answer()
+    if query:
+        await query.answer()
 
     current_refs = database.get_setting("gemini_required_referrals", "5")
     text = (
@@ -417,7 +434,13 @@ async def set_gemini_refs_start(update: Update, context: ContextTypes.DEFAULT_TY
         f"Send the number of invited friends needed to unlock the method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
         f"Send /cancel to abort."
     )
-    await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
+    if query:
+        try:
+            await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
+    elif update.message:
+        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
     return STATE_SET_GEMINI_REFS
 
 
@@ -444,7 +467,8 @@ async def set_gemini_refs_received(update: Update, context: ContextTypes.DEFAULT
 async def set_gemini_price_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Prompts admin for USDT price."""
     query = update.callback_query
-    await query.answer()
+    if query:
+        await query.answer()
 
     current_price = database.get_setting("gemini_method_price", "0.0")
     currency = database.get_setting("currency_name", config.CURRENCY_NAME)
@@ -455,7 +479,13 @@ async def set_gemini_price_start(update: Update, context: ContextTypes.DEFAULT_T
         f"Send the price in USDT (e.g. <code>0</code> for free with referrals, or <code>10.0</code>):\n\n"
         f"Send /cancel to abort."
     )
-    await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
+    if query:
+        try:
+            await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
+    elif update.message:
+        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
     return STATE_SET_GEMINI_PRICE
 
 
