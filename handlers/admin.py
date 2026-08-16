@@ -167,28 +167,61 @@ async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STATE_ADD_CHANNEL_ID
 
 
+def extract_chat_identifier(chat_input: str, msg: Any) -> Any:
+    """Extracts chat ID or username from text, t.me links, or forwarded messages."""
+    # Check if forwarded from channel
+    if msg:
+        if hasattr(msg, "forward_from_chat") and msg.forward_from_chat:
+            return msg.forward_from_chat.id
+        if hasattr(msg, "forward_origin") and getattr(msg.forward_origin, "chat", None):
+            return msg.forward_origin.chat.id
+
+    raw = chat_input.strip()
+    if (raw.startswith("-") and raw[1:].isdigit()) or raw.isdigit():
+        return int(raw)
+
+    # Handle t.me links
+    cleaned = raw.replace("https://", "").replace("http://", "").replace("t.me/", "").replace("telegram.me/", "").strip("/")
+    if not cleaned.startswith("@") and not cleaned.startswith("+"):
+        cleaned = f"@{cleaned}"
+    return cleaned
+
+
 async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles channel ID/username input from admin."""
-    chat_input = update.message.text.strip()
-    parsed_id = int(chat_input) if (chat_input.startswith("-") or chat_input.isdigit()) else chat_input
+    """Handles channel ID/username/link input from admin."""
+    chat_input = update.message.text.strip() if update.message and update.message.text else ""
+    parsed_id = extract_chat_identifier(chat_input, update.message)
     
     try:
         chat = await context.bot.get_chat(chat_id=parsed_id)
+        
+        # Verify bot is an admin in the channel
+        bot_member = await context.bot.get_chat_member(chat_id=chat.id, user_id=context.bot.id)
+        if bot_member.status not in ["administrator", "creator"]:
+            await update.message.reply_text(
+                f"⚠️ <b>Bot is not an Admin!</b>\n\n"
+                f"Found channel: <b>{chat.title}</b> (ID: <code>{chat.id}</code>)\n"
+                f"However, this bot is NOT an administrator in this channel.\n\n"
+                f"👉 <b>Please promote the bot to Administrator in {chat.title}</b> with 'Invite Users' permission and try again, or send /cancel.",
+                parse_mode=ParseMode.HTML
+            )
+            return STATE_ADD_CHANNEL_ID
+
         context.user_data["new_channel_chat_id"] = str(chat.id)
-        context.user_data["new_channel_title"] = chat.title or chat_input
+        context.user_data["new_channel_title"] = chat.title or str(parsed_id)
         
         default_link = f"https://t.me/{chat.username}" if chat.username else (chat.invite_link or "")
         context.user_data["new_channel_link"] = default_link
 
         if default_link:
             text = (
-                f"✅ Found: <b>{chat.title}</b> (ID: <code>{chat.id}</code>)\n"
+                f"✅ Found & Verified: <b>{chat.title}</b> (ID: <code>{chat.id}</code>)\n"
                 f"🔗 Detected Link: <code>{default_link}</code>\n\n"
                 f"Send a custom invite link if you wish, or reply <code>default</code> to use the detected link:"
             )
         else:
             text = (
-                f"✅ Found: <b>{chat.title}</b> (ID: <code>{chat.id}</code>)\n\n"
+                f"✅ Found & Verified: <b>{chat.title}</b> (ID: <code>{chat.id}</code>)\n\n"
                 f"🔗 Please send the <b>Invite Link</b> for this channel/group (e.g. <code>https://t.me/+AbCdEfGh</code>):"
             )
 
@@ -198,8 +231,11 @@ async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_
     except TelegramError as e:
         await update.message.reply_text(
             f"❌ <b>Could not access channel:</b> {e}\n\n"
-            f"⚠️ <b>Reminder:</b> The bot must be an <b>Administrator</b> in the channel/group!\n"
-            f"Please add the bot as admin and try sending the username/ID again, or /cancel."
+            f"⚠️ <b>Important Checklist:</b>\n"
+            f"1. Make sure you added <b>this bot</b> into the channel/group as an <b>ADMINISTRATOR</b>.\n"
+            f"2. You can send the username (e.g. <code>@bdhitlog</code>), the full link (<code>https://t.me/bdhitlog</code>), or simply <b>forward any message</b> from the channel here.\n\n"
+            f"Please check and send again, or send /cancel.",
+            parse_mode=ParseMode.HTML
         )
         return STATE_ADD_CHANNEL_ID
 
