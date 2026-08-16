@@ -14,3 +14,6 @@ CURRENCY_NAME = os.getenv("CURRENCY_NAME", "USDT")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "bot_database.db")
 GEMINI_METHOD_LINK = os.getenv("GEMINI_METHOD_LINK", "https://t.me/SARKAR_COMPUTER")
 
+# Firebase Realtime Database
+FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "https://tryyhtyryt-default-rtdb.firebaseio.com").rstrip("/")
+

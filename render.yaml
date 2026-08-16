@@ -15,5 +15,8 @@ services:
         value: "USDT"
       - key: GEMINI_METHOD_LINK
         value: "https://t.me/SARKAR_COMPUTER"
+      - key: FIREBASE_DATABASE_URL
+        value: "https://tryyhtyryt-default-rtdb.firebaseio.com"
       - key: PORT
-        value: "8080"
+        value: "10000"
+
