@@ -247,7 +247,12 @@ def main():
     print(">> Telegram Referral & Force Join Bot is Running!")
     print("==================================================")
     
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(
+        drop_pending_updates=True,
+        bootstrap_retries=-1,
+        poll_interval=1.0,
+        timeout=20
+    )
 
 
 if __name__ == "__main__":
