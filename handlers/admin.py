@@ -220,13 +220,23 @@ async def admin_menu_callback_handler(update: Update, context: ContextTypes.DEFA
 
 # --- CHANNEL ADD CONVERSATION (SUPPORTS SINGLE & BULK ADD) ---
 
+def get_forward_chat_id(msg: Any) -> Optional[int]:
+    """Safely extracts forward chat ID across python-telegram-bot versions without AttributeError."""
+    if not msg:
+        return None
+    origin = getattr(msg, "forward_origin", None)
+    if origin:
+        chat = getattr(origin, "chat", None)
+        if chat:
+            return getattr(chat, "id", None)
+    return None
+
+
 def extract_chat_identifier(chat_input: str, msg: Any = None) -> Any:
     """Extracts chat ID or username from text, t.me links, or forwarded messages."""
-    if msg:
-        if hasattr(msg, "forward_from_chat") and msg.forward_from_chat:
-            return msg.forward_from_chat.id
-        if hasattr(msg, "forward_origin") and getattr(msg.forward_origin, "chat", None):
-            return msg.forward_origin.chat.id
+    fwd_id = get_forward_chat_id(msg)
+    if fwd_id:
+        return fwd_id
 
     raw = chat_input.strip()
     if (raw.startswith("-") and raw[1:].isdigit()) or raw.isdigit():
@@ -271,11 +281,10 @@ async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_
         return STATE_ADD_CHANNEL_ID
 
     raw_items = []
-    # Check if forwarded from channel
-    if msg.forward_from_chat:
-        raw_items.append(msg.forward_from_chat.id)
-    elif getattr(msg, "forward_origin", None) and getattr(msg.forward_origin, "chat", None):
-        raw_items.append(msg.forward_origin.chat.id)
+    # Safely check if forwarded from channel
+    fwd_id = get_forward_chat_id(msg)
+    if fwd_id:
+        raw_items.append(fwd_id)
     elif msg.text:
         import re
         tokens = re.split(r'[\r\n, \t]+', msg.text.strip())
@@ -426,8 +435,9 @@ async def admin_auto_detect_channel_message(update: Update, context: ContextType
         return
 
     text = msg.text or msg.caption or ""
+    fwd_id = get_forward_chat_id(msg)
     is_channel_input = False
-    if msg.forward_from_chat or (getattr(msg, "forward_origin", None) and getattr(msg.forward_origin, "chat", None)):
+    if fwd_id:
         is_channel_input = True
     elif "t.me/" in text or "telegram.me/" in text or (text.strip().startswith("@") and " " not in text.strip()):
         is_channel_input = True
