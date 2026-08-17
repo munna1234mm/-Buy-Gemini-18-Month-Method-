@@ -264,7 +264,13 @@ def main():
         allow_reentry=True
     )
 
-    # Register admin conversations first
+    # 1. Primary Command Handlers
+    app.add_handler(CommandHandler("start", start_handler))
+    app.add_handler(CommandHandler("admin", admin_command_handler))
+    app.add_handler(CommandHandler("addchannel", add_channel_direct_command))
+    app.add_handler(CommandHandler("add", add_channel_direct_command))
+
+    # 2. Admin Conversation Handlers
     app.add_handler(add_channel_conv)
     app.add_handler(set_reward_conv)
     app.add_handler(broadcast_conv)
@@ -273,23 +279,19 @@ def main():
     app.add_handler(edit_m_refs_conv)
     app.add_handler(edit_m_price_conv)
 
-    # Admin command & callbacks
-    app.add_handler(CommandHandler("admin", admin_command_handler))
-    app.add_handler(CommandHandler("addchannel", add_channel_direct_command))
-    app.add_handler(CommandHandler("add", add_channel_direct_command))
-    app.add_handler(MessageHandler(filters.TEXT | filters.FORWARDED, admin_auto_detect_channel_message))
+    # 3. Callback Query Handlers (Admin & User)
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^admin_"))
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^manage_method_"))
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^del_method_"))
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^del_channel_"))
-
-    # --- USER HANDLERS (Inside Message Displays) ---
-    app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CallbackQueryHandler(check_join_callback_handler, pattern="^check_join$"))
     app.add_handler(CallbackQueryHandler(user_main_menu_callback, pattern="^user_main_menu$"))
     app.add_handler(CallbackQueryHandler(user_method_details_callback, pattern="^user_method_"))
     app.add_handler(CallbackQueryHandler(user_ref_link_callback, pattern="^user_ref_link$"))
     app.add_handler(CallbackQueryHandler(user_balance_callback, pattern="^user_balance$"))
+
+    # 4. Fallback Auto-detect Message Handlers (Non-commands only)
+    app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, admin_auto_detect_channel_message))
 
     # Error handling
     app.add_error_handler(error_handler)
