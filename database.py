@@ -147,6 +147,15 @@ def init_db():
     logger.info("Database initialized & synced with Firebase successfully.")
 
 
+def to_list_of_dicts(data: Any) -> List[Dict[str, Any]]:
+    """Converts Firebase dict or list response into a clean list of dict items."""
+    if isinstance(data, dict):
+        return [v for v in data.values() if isinstance(v, dict)]
+    elif isinstance(data, list):
+        return [v for v in data if isinstance(v, dict)]
+    return []
+
+
 def restore_from_firebase():
     """Restores users, channels, settings, methods, and logs from Firebase into local SQLite."""
     try:
@@ -164,71 +173,63 @@ def restore_from_firebase():
                     cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, str(v)))
 
             # Restore Users
-            fb_users = fb_data.get("users", {})
-            if isinstance(fb_users, dict):
-                for uid_str, udata in fb_users.items():
-                    if isinstance(udata, dict) and "user_id" in udata:
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO users (user_id, username, first_name, referrer_id, balance, referral_count, is_verified, is_banned)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            udata["user_id"],
-                            udata.get("username", ""),
-                            udata.get("first_name", ""),
-                            udata.get("referrer_id"),
-                            udata.get("balance", 0.0),
-                            udata.get("referral_count", 0),
-                            udata.get("is_verified", 0),
-                            udata.get("is_banned", 0)
-                        ))
+            for udata in to_list_of_dicts(fb_data.get("users")):
+                if "user_id" in udata:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO users (user_id, username, first_name, referrer_id, balance, referral_count, is_verified, is_banned)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        udata["user_id"],
+                        udata.get("username", ""),
+                        udata.get("first_name", ""),
+                        udata.get("referrer_id"),
+                        udata.get("balance", 0.0),
+                        udata.get("referral_count", 0),
+                        udata.get("is_verified", 0),
+                        udata.get("is_banned", 0)
+                    ))
 
             # Restore Channels
-            fb_channels = fb_data.get("channels", {})
-            if isinstance(fb_channels, dict):
-                for ch_id_str, chdata in fb_channels.items():
-                    if isinstance(chdata, dict) and "chat_id" in chdata:
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO channels (id, chat_id, title, invite_link)
-                            VALUES (?, ?, ?, ?)
-                        """, (
-                            chdata.get("id"),
-                            chdata["chat_id"],
-                            chdata.get("title", "Channel"),
-                            chdata.get("invite_link", "")
-                        ))
+            for chdata in to_list_of_dicts(fb_data.get("channels")):
+                if "chat_id" in chdata:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO channels (id, chat_id, title, invite_link)
+                        VALUES (?, ?, ?, ?)
+                    """, (
+                        chdata.get("id"),
+                        chdata["chat_id"],
+                        chdata.get("title", "Channel"),
+                        chdata.get("invite_link", "")
+                    ))
 
             # Restore Methods
-            fb_methods = fb_data.get("methods", {})
-            if isinstance(fb_methods, dict):
-                for mid_str, mdata in fb_methods.items():
-                    if isinstance(mdata, dict) and "title" in mdata:
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO methods (id, title, description, photo_file_id, required_referrals, price)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (
-                            mdata.get("id", int(mid_str) if mid_str.isdigit() else None),
-                            mdata["title"],
-                            mdata.get("description", ""),
-                            mdata.get("photo_file_id", ""),
-                            mdata.get("required_referrals", 5),
-                            mdata.get("price", 0.0)
-                        ))
+            for mdata in to_list_of_dicts(fb_data.get("methods")):
+                if "title" in mdata:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO methods (id, title, description, photo_file_id, required_referrals, price)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        mdata.get("id"),
+                        mdata["title"],
+                        mdata.get("description", ""),
+                        mdata.get("photo_file_id", ""),
+                        mdata.get("required_referrals", 5),
+                        mdata.get("price", 0.0)
+                    ))
 
             # Restore Referral Logs
-            fb_logs = fb_data.get("referral_logs", {})
-            if isinstance(fb_logs, dict):
-                for log_key, logdata in fb_logs.items():
-                    if isinstance(logdata, dict) and "referred_id" in logdata:
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO referral_logs (id, referrer_id, referred_id, reward, status)
-                            VALUES (?, ?, ?, ?, ?)
-                        """, (
-                            logdata.get("id"),
-                            logdata.get("referrer_id"),
-                            logdata["referred_id"],
-                            logdata.get("reward", 0.0),
-                            logdata.get("status", "completed")
-                        ))
+            for logdata in to_list_of_dicts(fb_data.get("referral_logs")):
+                if "referred_id" in logdata:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO referral_logs (id, referrer_id, referred_id, reward, status)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (
+                        logdata.get("id"),
+                        logdata.get("referrer_id"),
+                        logdata["referred_id"],
+                        logdata.get("reward", 0.0),
+                        logdata.get("status", "completed")
+                    ))
 
             conn.commit()
             logger.info("Successfully restored and synced cloud data from Firebase.")

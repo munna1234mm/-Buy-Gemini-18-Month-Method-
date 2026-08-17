@@ -124,15 +124,12 @@ def main():
 
     # --- ADMIN CONVERSATIONS ---
 
-    # 1. Add Channel Conversation
+    # 1. Add Channel Conversation (Single & Bulk)
     add_channel_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(add_channel_start, pattern="^add_channel$")],
         states={
             STATE_ADD_CHANNEL_ID: [
                 MessageHandler(filters.ALL & ~filters.COMMAND, add_channel_id_received)
-            ],
-            STATE_ADD_CHANNEL_LINK: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_channel_link_received)
             ]
         },
         fallbacks=[

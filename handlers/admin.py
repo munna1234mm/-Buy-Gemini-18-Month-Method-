@@ -218,7 +218,7 @@ async def admin_menu_callback_handler(update: Update, context: ContextTypes.DEFA
         await query.edit_message_text("🔒 Admin panel closed.")
 
 
-# --- CHANNEL ADD CONVERSATION ---
+# --- CHANNEL ADD CONVERSATION (SUPPORTS SINGLE & BULK ADD) ---
 
 def extract_chat_identifier(chat_input: str, msg: Any) -> Any:
     """Extracts chat ID or username from text, t.me links, or forwarded messages."""
@@ -239,14 +239,17 @@ def extract_chat_identifier(chat_input: str, msg: Any) -> Any:
 
 
 async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Starts add channel/group flow."""
+    """Starts add channel/group flow (supports single and bulk/multiple channels at once)."""
     query = update.callback_query
     await query.answer()
 
     text = (
-        f"➕ <b>Add Channel or Group</b>\n\n"
-        f"1. <b>First, make sure to add this bot as an ADMIN in your Channel or Group!</b>\n"
-        f"2. Send the Channel/Group <b>Username</b> (e.g. <code>@MyChannel</code>), <b>Link</b> (e.g. <code>https://t.me/MyChannel</code>), or <b>Forward a message</b> here:\n\n"
+        f"➕ <b>Add Channel(s) or Group(s)</b>\n\n"
+        f"⚡ <b>Bulk Add Supported:</b> You can send <b>ONE or ALL your channels at once</b>!\n\n"
+        f"1. Make sure this bot is added as an <b>ADMIN</b> in each channel/group.\n"
+        f"2. Send usernames or links (one per line, separated by space or commas), or forward a message:\n\n"
+        f"<i>Example:</i>\n"
+        f"<code>@MyChannel1\nhttps://t.me/MyChannel2\n@MyGroup3</code>\n\n"
         f"Send /cancel to abort."
     )
     await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_channels"), parse_mode=ParseMode.HTML)
@@ -254,85 +257,69 @@ async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles channel ID/username/link input from admin."""
-    chat_input = update.message.text.strip() if update.message and update.message.text else ""
-    parsed_id = extract_chat_identifier(chat_input, update.message)
-    
-    try:
-        chat = await context.bot.get_chat(chat_id=parsed_id)
-        
-        # Verify bot is an admin in the channel
-        bot_member = await context.bot.get_chat_member(chat_id=chat.id, user_id=context.bot.id)
-        if bot_member.status not in ["administrator", "creator"]:
-            await update.message.reply_text(
-                f"⚠️ <b>Bot is not an Admin!</b>\n\n"
-                f"Found channel: <b>{chat.title}</b> (ID: <code>{chat.id}</code>)\n"
-                f"However, this bot is NOT an administrator in this channel.\n\n"
-                f"👉 <b>Please promote the bot to Administrator in {chat.title}</b> with 'Invite Users' permission and try again, or send /cancel.",
-                parse_mode=ParseMode.HTML
-            )
-            return STATE_ADD_CHANNEL_ID
-
-        context.user_data["new_channel_chat_id"] = str(chat.id)
-        context.user_data["new_channel_title"] = chat.title or str(parsed_id)
-        
-        default_link = f"https://t.me/{chat.username}" if chat.username else (chat.invite_link or "")
-        context.user_data["new_channel_link"] = default_link
-
-        if default_link:
-            text = (
-                f"✅ Found & Verified: <b>{chat.title}</b> (ID: <code>{chat.id}</code>)\n"
-                f"🔗 Detected Link: <code>{default_link}</code>\n\n"
-                f"Send a custom invite link if you wish, or reply <code>default</code> to use the detected link:"
-            )
-        else:
-            text = (
-                f"✅ Found & Verified: <b>{chat.title}</b> (ID: <code>{chat.id}</code>)\n\n"
-                f"🔗 Please send the <b>Invite Link</b> for this channel/group (e.g. <code>https://t.me/+AbCdEfGh</code>):"
-            )
-
-        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_channels"), parse_mode=ParseMode.HTML)
-        return STATE_ADD_CHANNEL_LINK
-
-    except TelegramError as e:
-        await update.message.reply_text(
-            f"❌ <b>Could not access channel:</b> {e}\n\n"
-            f"⚠️ <b>Important Checklist:</b>\n"
-            f"1. Make sure you added <b>this bot</b> into the channel/group as an <b>ADMINISTRATOR</b>.\n"
-            f"2. You can send the username (e.g. <code>@bdhitlog</code>), the full link (<code>https://t.me/bdhitlog</code>), or simply <b>forward any message</b> from the channel here.\n\n"
-            f"Please check and send again, or send /cancel.",
-            parse_mode=ParseMode.HTML
-        )
+    """Handles channel ID/username/link input (single or multiple lines/links) from admin."""
+    msg = update.message
+    if not msg:
         return STATE_ADD_CHANNEL_ID
 
-
-async def add_channel_link_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Saves the channel with invite link."""
-    link_input = update.message.text.strip()
-    
-    if link_input.lower() == "default":
-        invite_link = context.user_data.get("new_channel_link", "")
+    # If forwarded from channel
+    if msg.forward_from_chat or (hasattr(msg, "forward_origin") and getattr(msg.forward_origin, "chat", None)):
+        forward_chat = msg.forward_from_chat or getattr(msg.forward_origin, "chat", None)
+        raw_items = [forward_chat.id]
     else:
-        invite_link = link_input
+        text_input = msg.text or ""
+        import re
+        raw_tokens = re.split(r'[\r\n, \t]+', text_input.strip())
+        raw_items = [t.strip() for t in raw_tokens if t.strip()]
 
-    if not invite_link.startswith("http"):
-        await update.message.reply_text("❌ Link must start with http:// or https://, or send 'default'.")
-        return STATE_ADD_CHANNEL_LINK
+    if not raw_items:
+        await msg.reply_text("❌ Please send at least one channel username or link, or send /cancel.")
+        return STATE_ADD_CHANNEL_ID
 
-    chat_id = context.user_data.get("new_channel_chat_id")
-    title = context.user_data.get("new_channel_title", "Channel")
+    status_msg = await msg.reply_text(f"⏳ Verifying and adding {len(raw_items)} channel(s)...")
 
-    database.add_channel(chat_id=chat_id, title=title, invite_link=invite_link)
+    added_channels = []
+    failed_channels = []
+
+    for item in raw_items:
+        parsed_id = extract_chat_identifier(str(item), msg if len(raw_items) == 1 else None)
+        try:
+            chat = await context.bot.get_chat(chat_id=parsed_id)
+            
+            # Check bot admin status
+            bot_member = await context.bot.get_chat_member(chat_id=chat.id, user_id=context.bot.id)
+            if bot_member.status not in ["administrator", "creator"]:
+                failed_channels.append(f"• <b>{chat.title}</b>: Bot is not an Admin.")
+                continue
+
+            # Determine invite link automatically
+            invite_link = f"https://t.me/{chat.username}" if chat.username else (chat.invite_link or "")
+            if not invite_link:
+                try:
+                    invite_link = await context.bot.export_chat_invite_link(chat_id=chat.id)
+                except Exception:
+                    invite_link = f"https://t.me/{chat.id}"
+
+            database.add_channel(chat_id=str(chat.id), title=chat.title or str(parsed_id), invite_link=invite_link)
+            added_channels.append(f"• ✅ <b>{chat.title}</b> (<code>{invite_link}</code>)")
+
+        except Exception as e:
+            failed_channels.append(f"• <code>{item}</code>: {e}")
+
+    result_text = "📊 <b>Channel Addition Summary</b>\n\n"
+    if added_channels:
+        result_text += f"🎉 <b>Successfully Added ({len(added_channels)}):</b>\n" + "\n".join(added_channels) + "\n\n"
+    if failed_channels:
+        result_text += f"⚠️ <b>Failed / Not Admin ({len(failed_channels)}):</b>\n" + "\n".join(failed_channels) + "\n\n"
+        
+    result_text += "<i>Users must now join all active channels to use the bot.</i>"
 
     channels = database.get_all_channels()
-    await update.message.reply_text(
-        f"🎉 <b>Channel Added Successfully!</b>\n\n"
-        f"📢 <b>Title:</b> {title}\n"
-        f"🆔 <b>Chat ID:</b> <code>{chat_id}</code>\n"
-        f"🔗 <b>Invite Link:</b> {invite_link}\n\n"
-        f"All bot users will now be required to join this channel before using the bot.",
+    await status_msg.edit_text(
+        result_text,
         reply_markup=get_channels_manager_keyboard(channels),
-        parse_mode=ParseMode.HTML
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True
     )
     return ConversationHandler.END
 
