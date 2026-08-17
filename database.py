@@ -240,10 +240,24 @@ def restore_from_firebase():
         logger.warning(f"Failed to restore cloud data from Firebase: {e}")
 
 
+# --- CACHING LAYER FOR HIGH PERFORMANCE ---
+_settings_cache: Dict[str, str] = {}
+_channels_cache: Optional[List[Dict[str, Any]]] = None
+_methods_cache: Optional[List[Dict[str, Any]]] = None
+
+def invalidate_caches():
+    global _settings_cache, _channels_cache, _methods_cache
+    _settings_cache.clear()
+    _channels_cache = None
+    _methods_cache = None
+
+
 # --- DYNAMIC METHODS OPERATIONS ---
 
 def add_method(title: str, description: str, photo_file_id: str = "", required_referrals: int = 5, price: float = 0.0) -> int:
     """Adds a new method and syncs to Firebase."""
+    global _methods_cache
+    _methods_cache = None
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -262,6 +276,8 @@ def add_method(title: str, description: str, photo_file_id: str = "", required_r
 
 def update_method(method_id: int, title: str = None, description: str = None, photo_file_id: str = None, required_referrals: int = None, price: float = None) -> bool:
     """Updates an existing method and syncs to Firebase."""
+    global _methods_cache
+    _methods_cache = None
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM methods WHERE id = ?", (method_id,))
@@ -290,6 +306,8 @@ def update_method(method_id: int, title: str = None, description: str = None, ph
 
 def delete_method(method_id: int) -> bool:
     """Deletes a method and removes from Firebase."""
+    global _methods_cache
+    _methods_cache = None
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM methods WHERE id = ?", (method_id,))
@@ -299,15 +317,23 @@ def delete_method(method_id: int) -> bool:
 
 
 def get_all_methods() -> List[Dict[str, Any]]:
-    """Returns all available methods."""
+    """Returns all available methods from memory cache."""
+    global _methods_cache
+    if _methods_cache is not None:
+        return _methods_cache
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM methods ORDER BY id ASC")
-        return [dict(r) for r in cursor.fetchall()]
+        _methods_cache = [dict(r) for r in cursor.fetchall()]
+        return _methods_cache
 
 
 def get_method(method_id: int) -> Optional[Dict[str, Any]]:
     """Returns a single method by ID."""
+    methods = get_all_methods()
+    for m in methods:
+        if m["id"] == method_id:
+            return m
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM methods WHERE id = ?", (method_id,))
@@ -478,6 +504,8 @@ def get_all_user_ids() -> List[int]:
 # --- CHANNEL / GROUP OPERATIONS ---
 
 def add_channel(chat_id: str, title: str, invite_link: str) -> bool:
+    global _channels_cache
+    _channels_cache = None
     with get_connection() as conn:
         cursor = conn.cursor()
         try:
@@ -501,6 +529,8 @@ def add_channel(chat_id: str, title: str, invite_link: str) -> bool:
 
 
 def remove_channel(channel_id: int) -> bool:
+    global _channels_cache
+    _channels_cache = None
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM channels WHERE id = ?", (channel_id,))
@@ -510,13 +540,21 @@ def remove_channel(channel_id: int) -> bool:
 
 
 def get_all_channels() -> List[Dict[str, Any]]:
+    global _channels_cache
+    if _channels_cache is not None:
+        return _channels_cache
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM channels ORDER BY id ASC")
-        return [dict(r) for r in cursor.fetchall()]
+        _channels_cache = [dict(r) for r in cursor.fetchall()]
+        return _channels_cache
 
 
 def get_channel(channel_id: int) -> Optional[Dict[str, Any]]:
+    channels = get_all_channels()
+    for ch in channels:
+        if ch["id"] == channel_id:
+            return ch
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM channels WHERE id = ?", (channel_id,))
@@ -527,14 +565,21 @@ def get_channel(channel_id: int) -> Optional[Dict[str, Any]]:
 # --- SETTINGS OPERATIONS ---
 
 def get_setting(key: str, default: str = "") -> str:
+    global _settings_cache
+    if key in _settings_cache:
+        return _settings_cache[key]
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
         row = cursor.fetchone()
-        return row["value"] if row else default
+        val = row["value"] if row else default
+        _settings_cache[key] = val
+        return val
 
 
 def set_setting(key: str, value: str):
+    global _settings_cache
+    _settings_cache[key] = value
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -612,3 +657,4 @@ def get_stats() -> Dict[str, Any]:
             "total_referrals": total_referrals,
             "total_balance": round(total_balance, 2)
         }
+

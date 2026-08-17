@@ -383,45 +383,93 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STATE_BROADCAST
 
 
-async def broadcast_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Broadcasts message to all users."""
-    user_ids = database.get_all_user_ids()
-    msg = update.message
-
-    status_msg = await update.message.reply_text(f"🚀 Broadcast started to {len(user_ids)} users...")
-    
+async def _run_broadcast_worker(bot, admin_chat_id: int, status_message_id: int, message_to_copy, user_ids: list):
+    """Background asynchronous worker for broadcast that never blocks the bot or other users."""
     success = 0
     failed = 0
-
+    total = len(user_ids)
+    
     for idx, uid in enumerate(user_ids, 1):
         try:
-            await msg.copy(chat_id=uid)
+            await message_to_copy.copy(chat_id=uid)
             success += 1
-        except Exception as e:
+        except TelegramError as e:
             failed += 1
-            logger.debug(f"Failed broadcast to {uid}: {e}")
+            if "RetryAfter" in str(e):
+                import re
+                match = re.search(r'(\d+)', str(e))
+                delay = int(match.group(1)) if match else 2
+                await asyncio.sleep(delay)
+        except Exception:
+            failed += 1
 
-        if idx % 25 == 0 or idx == len(user_ids):
+        # Smooth rate limiting
+        await asyncio.sleep(0.035)
+
+        # Update progress report every 40 messages or at finish
+        if idx % 40 == 0 or idx == total:
             try:
-                await status_msg.edit_text(
-                    f"📤 <b>Broadcasting...</b>\n"
-                    f"Progress: {idx}/{len(user_ids)}\n"
-                    f"✅ Sent: {success}\n"
-                    f"❌ Failed/Blocked: {failed}",
+                await bot.edit_message_text(
+                    chat_id=admin_chat_id,
+                    message_id=status_message_id,
+                    text=(
+                        f"📤 <b>Broadcast in Progress...</b>\n\n"
+                        f"📊 Progress: <code>{idx} / {total}</code> ({(idx/total)*100:.1f}%)\n"
+                        f"✅ Delivered: <code>{success}</code>\n"
+                        f"❌ Failed/Blocked: <code>{failed}</code>\n\n"
+                        f"<i>⚡ Bot remains 100% active and lightning fast for all users!</i>"
+                    ),
                     parse_mode=ParseMode.HTML
                 )
             except Exception:
                 pass
-        await asyncio.sleep(0.04)
 
-    await status_msg.edit_text(
-        f"🎉 <b>Broadcast Complete!</b>\n\n"
-        f"📊 Total Target: {len(user_ids)}\n"
-        f"✅ Sent Successfully: {success}\n"
-        f"❌ Failed / Blocked: {failed}",
-        reply_markup=get_admin_inline_menu(),
+    try:
+        await bot.edit_message_text(
+            chat_id=admin_chat_id,
+            message_id=status_message_id,
+            text=(
+                f"🎉 <b>Broadcast Finished Successfully!</b>\n\n"
+                f"📊 Total Target: <code>{total}</code> users\n"
+                f"✅ Successfully Delivered: <code>{success}</code>\n"
+                f"❌ Failed / Blocked: <code>{failed}</code>\n\n"
+                f"<i>All users received the message in background.</i>"
+            ),
+            reply_markup=get_admin_inline_menu(),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        pass
+
+
+async def broadcast_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Launches non-blocking background broadcast."""
+    user_ids = database.get_all_user_ids()
+    msg = update.message
+    admin_id = update.effective_user.id
+
+    if not user_ids:
+        await msg.reply_text("❌ No active users found to broadcast.")
+        return ConversationHandler.END
+
+    status_msg = await msg.reply_text(
+        f"🚀 <b>Broadcast Launched in Background!</b>\n\n"
+        f"👥 Target: <b>{len(user_ids)} users</b>\n"
+        f"⚡ <i>Broadcasting in background. You and all users can continue using the bot smoothly!</i>",
         parse_mode=ParseMode.HTML
     )
+    
+    # Run in background task so main loop is never blocked!
+    asyncio.create_task(
+        _run_broadcast_worker(
+            bot=context.bot,
+            admin_chat_id=admin_id,
+            status_message_id=status_msg.message_id,
+            message_to_copy=msg,
+            user_ids=user_ids
+        )
+    )
+
     return ConversationHandler.END
 
 

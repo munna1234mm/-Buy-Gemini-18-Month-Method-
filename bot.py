@@ -119,8 +119,13 @@ def main():
         logger.error("Error: BOT_TOKEN is missing or not configured in .env file!")
         sys.exit(1)
 
-    # Build Application
-    app = ApplicationBuilder().token(config.BOT_TOKEN).build()
+    # Build Application with high concurrency for fast multi-user performance
+    app = (
+        ApplicationBuilder()
+        .token(config.BOT_TOKEN)
+        .concurrent_updates(32)
+        .build()
+    )
 
     # --- ADMIN CONVERSATIONS ---
 
