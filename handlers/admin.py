@@ -220,7 +220,7 @@ async def admin_menu_callback_handler(update: Update, context: ContextTypes.DEFA
 
 # --- CHANNEL ADD CONVERSATION (SUPPORTS SINGLE & BULK ADD) ---
 
-def extract_chat_identifier(chat_input: str, msg: Any) -> Any:
+def extract_chat_identifier(chat_input: str, msg: Any = None) -> Any:
     """Extracts chat ID or username from text, t.me links, or forwarded messages."""
     if msg:
         if hasattr(msg, "forward_from_chat") and msg.forward_from_chat:
@@ -232,7 +232,15 @@ def extract_chat_identifier(chat_input: str, msg: Any) -> Any:
     if (raw.startswith("-") and raw[1:].isdigit()) or raw.isdigit():
         return int(raw)
 
-    cleaned = raw.replace("https://", "").replace("http://", "").replace("t.me/", "").replace("telegram.me/", "").strip("/")
+    cleaned = (
+        raw.replace("@http://", "")
+        .replace("@https://", "")
+        .replace("https://", "")
+        .replace("http://", "")
+        .replace("t.me/", "")
+        .replace("telegram.me/", "")
+        .strip("/")
+    )
     if not cleaned.startswith("@") and not cleaned.startswith("+"):
         cleaned = f"@{cleaned}"
     return cleaned
@@ -287,9 +295,13 @@ async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_
             chat = await context.bot.get_chat(chat_id=parsed_id)
             
             # Check bot admin status
-            bot_member = await context.bot.get_chat_member(chat_id=chat.id, user_id=context.bot.id)
-            if bot_member.status not in ["administrator", "creator"]:
-                failed_channels.append(f"• <b>{chat.title}</b>: Bot is not an Admin.")
+            try:
+                bot_member = await context.bot.get_chat_member(chat_id=chat.id, user_id=context.bot.id)
+                if bot_member.status not in ["administrator", "creator"]:
+                    failed_channels.append(f"• <b>{chat.title}</b>: Bot is not an Admin.")
+                    continue
+            except Exception as e:
+                failed_channels.append(f"• <b>{chat.title}</b>: Bot must be Admin ({e}).")
                 continue
 
             # Determine invite link automatically
@@ -315,12 +327,20 @@ async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_
     result_text += "<i>Users must now join all active channels to use the bot.</i>"
 
     channels = database.get_all_channels()
-    await status_msg.edit_text(
-        result_text,
-        reply_markup=get_channels_manager_keyboard(channels),
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True
-    )
+    try:
+        await status_msg.edit_text(
+            result_text,
+            reply_markup=get_channels_manager_keyboard(channels),
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True
+        )
+    except Exception:
+        await msg.reply_text(
+            result_text,
+            reply_markup=get_channels_manager_keyboard(channels),
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True
+        )
     return ConversationHandler.END
 
 
