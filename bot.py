@@ -141,7 +141,8 @@ def main():
         ],
         per_chat=True,
         per_user=True,
-        per_message=False
+        per_message=False,
+        allow_reentry=True
     )
 
     # 2. Set Reward Conversation
@@ -158,7 +159,8 @@ def main():
         ],
         per_chat=True,
         per_user=True,
-        per_message=False
+        per_message=False,
+        allow_reentry=True
     )
 
     # 3. Broadcast Conversation
@@ -175,7 +177,8 @@ def main():
         ],
         per_chat=True,
         per_user=True,
-        per_message=False
+        per_message=False,
+        allow_reentry=True
     )
 
     # 4. Add Method Conversation (Supports Title, Text, Photo, Required Referrals, and Price)
@@ -201,7 +204,8 @@ def main():
         ],
         per_chat=True,
         per_user=True,
-        per_message=False
+        per_message=False,
+        allow_reentry=True
     )
 
     # 5. Edit Method Content & Photo Conversation
@@ -218,7 +222,8 @@ def main():
         ],
         per_chat=True,
         per_user=True,
-        per_message=False
+        per_message=False,
+        allow_reentry=True
     )
 
     # 6. Edit Method Required Referrals Conversation
@@ -235,7 +240,8 @@ def main():
         ],
         per_chat=True,
         per_user=True,
-        per_message=False
+        per_message=False,
+        allow_reentry=True
     )
 
     # 7. Edit Method Price Conversation
@@ -252,7 +258,8 @@ def main():
         ],
         per_chat=True,
         per_user=True,
-        per_message=False
+        per_message=False,
+        allow_reentry=True
     )
 
     # Register admin conversations first
