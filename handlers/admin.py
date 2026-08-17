@@ -266,22 +266,27 @@ async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles channel ID/username/link input (single or multiple lines/links) from admin."""
-    msg = update.message
+    msg = update.effective_message
     if not msg:
         return STATE_ADD_CHANNEL_ID
 
-    # If forwarded from channel
-    if msg.forward_from_chat or (hasattr(msg, "forward_origin") and getattr(msg.forward_origin, "chat", None)):
-        forward_chat = msg.forward_from_chat or getattr(msg.forward_origin, "chat", None)
-        raw_items = [forward_chat.id]
-    else:
-        text_input = msg.text or ""
+    raw_items = []
+    # Check if forwarded from channel
+    if msg.forward_from_chat:
+        raw_items.append(msg.forward_from_chat.id)
+    elif getattr(msg, "forward_origin", None) and getattr(msg.forward_origin, "chat", None):
+        raw_items.append(msg.forward_origin.chat.id)
+    elif msg.text:
         import re
-        raw_tokens = re.split(r'[\r\n, \t]+', text_input.strip())
-        raw_items = [t.strip() for t in raw_tokens if t.strip()]
+        tokens = re.split(r'[\r\n, \t]+', msg.text.strip())
+        raw_items.extend([t.strip() for t in tokens if t.strip()])
+    elif msg.caption:
+        import re
+        tokens = re.split(r'[\r\n, \t]+', msg.caption.strip())
+        raw_items.extend([t.strip() for t in tokens if t.strip()])
 
     if not raw_items:
-        await msg.reply_text("❌ Please send at least one channel username or link, or send /cancel.")
+        await msg.reply_text("❌ Please send at least one channel username or link (e.g. <code>@MyChannel</code> or <code>https://t.me/MyChannel</code>), or send /cancel.", parse_mode=ParseMode.HTML)
         return STATE_ADD_CHANNEL_ID
 
     status_msg = await msg.reply_text(f"⏳ Verifying and adding {len(raw_items)} channel(s)...")
@@ -342,6 +347,67 @@ async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_
             disable_web_page_preview=True
         )
     return ConversationHandler.END
+
+
+async def add_channel_direct_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Direct shortcut command to add channels: /addchannel <link1> <link2>..."""
+    if not await is_admin_authorized(update):
+        return
+    msg = update.effective_message
+    if not context.args:
+        await msg.reply_text(
+            "💡 <b>Direct Add Channel Usage:</b>\n\n"
+            "Send: <code>/addchannel @channelname</code>\n"
+            "Or: <code>/addchannel https://t.me/channelname</code>\n"
+            "Or add multiple at once:\n"
+            "<code>/addchannel @channel1 https://t.me/channel2</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    status_msg = await msg.reply_text(f"⏳ Verifying and adding {len(context.args)} channel(s)...")
+    added_channels = []
+    failed_channels = []
+
+    for item in context.args:
+        parsed_id = extract_chat_identifier(item)
+        try:
+            chat = await context.bot.get_chat(chat_id=parsed_id)
+            try:
+                bot_member = await context.bot.get_chat_member(chat_id=chat.id, user_id=context.bot.id)
+                if bot_member.status not in ["administrator", "creator"]:
+                    failed_channels.append(f"• <b>{chat.title}</b>: Bot is not an Admin.")
+                    continue
+            except Exception as e:
+                failed_channels.append(f"• <b>{chat.title}</b>: Bot must be Admin ({e}).")
+                continue
+
+            invite_link = f"https://t.me/{chat.username}" if chat.username else (chat.invite_link or "")
+            if not invite_link:
+                try:
+                    invite_link = await context.bot.export_chat_invite_link(chat_id=chat.id)
+                except Exception:
+                    invite_link = f"https://t.me/{chat.id}"
+
+            database.add_channel(chat_id=str(chat.id), title=chat.title or str(parsed_id), invite_link=invite_link)
+            added_channels.append(f"• ✅ <b>{chat.title}</b> (<code>{invite_link}</code>)")
+        except Exception as e:
+            failed_channels.append(f"• <code>{item}</code>: {e}")
+
+    result_text = "📊 <b>Direct Channel Addition Summary</b>\n\n"
+    if added_channels:
+        result_text += f"🎉 <b>Successfully Added ({len(added_channels)}):</b>\n" + "\n".join(added_channels) + "\n\n"
+    if failed_channels:
+        result_text += f"⚠️ <b>Failed / Not Admin ({len(failed_channels)}):</b>\n" + "\n".join(failed_channels) + "\n\n"
+    result_text += "<i>Users must now join all active channels to use the bot.</i>"
+
+    channels = database.get_all_channels()
+    await status_msg.edit_text(
+        result_text,
+        reply_markup=get_channels_manager_keyboard(channels),
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True
+    )
 
 
 # --- SET REWARD CONVERSATION ---

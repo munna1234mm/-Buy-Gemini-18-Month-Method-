@@ -30,6 +30,7 @@ from handlers.admin import (
     admin_menu_callback_handler,
     add_channel_start,
     add_channel_id_received,
+    add_channel_direct_command,
     set_reward_start,
     set_reward_received,
     broadcast_start,
@@ -273,6 +274,8 @@ def main():
 
     # Admin command & callbacks
     app.add_handler(CommandHandler("admin", admin_command_handler))
+    app.add_handler(CommandHandler("addchannel", add_channel_direct_command))
+    app.add_handler(CommandHandler("add", add_channel_direct_command))
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^admin_"))
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^manage_method_"))
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^del_method_"))
