@@ -447,7 +447,7 @@ async def admin_add_method_start(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer()
         text = (
             "➕ <b>Add New Method / Course</b>\n\n"
-            "Step 1/4: Send the <b>Title / Name</b> for this method (e.g. <code>💎 Gemini 18 Month Method</code> or <code>🎨 Canva Pro Lifetime</code>):\n\n"
+            "👉 <b>Step 1/4:</b> Send the <b>Button Title / Name</b> for this method (e.g. <code>🌐 Free Domain Method</code> or <code>💎 Gemini 18 Month Method</code>):\n\n"
             "Send /cancel to abort."
         )
         try:
@@ -458,7 +458,7 @@ async def admin_add_method_start(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def admin_add_m_title_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles method title or direct photo/post forward."""
+    """Handles method title input."""
     msg = update.message
     if not msg:
         return STATE_ADD_M_TITLE
@@ -468,7 +468,6 @@ async def admin_add_m_title_received(update: Update, context: ContextTypes.DEFAU
         photo_file_id = msg.photo[-1].file_id
         caption = msg.caption_html if msg.caption_html else (msg.caption or "")
         
-        # Extract title from caption first line, or use default
         lines = [l.strip() for l in caption.split("\n") if l.strip()]
         title = lines[0][:45] if lines else "Premium Method"
         desc = caption if caption else "Premium Method Tutorial & Details."
@@ -478,43 +477,24 @@ async def admin_add_m_title_received(update: Update, context: ContextTypes.DEFAU
         context.user_data["new_m_desc"] = desc
 
         text = (
-            f"✅ <b>Detected Title:</b> <code>{title}</code>\n"
-            f"🖼 <b>Photo & Content Saved!</b>\n\n"
-            f"Step 3/4: Send the <b>Required Referrals</b> number to unlock this method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
+            f"✅ <b>Button Title:</b> <code>{title}</code>\n"
+            f"🖼 <b>Photo & Post Content Saved!</b>\n\n"
+            f"👉 <b>Step 3/4:</b> Send the <b>Required Referrals</b> needed to unlock this method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
             f"Send /cancel to abort."
         )
         await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
         return STATE_ADD_M_REFS
 
-    # If admin sent text
+    # Normal title text
     raw_text = msg.text_html if msg.text_html else (msg.text or "")
     plain_text = msg.text or ""
-    lines = [l.strip() for l in plain_text.split("\n") if l.strip()]
-
-    # If multi-line post forwarded as text
-    if len(lines) > 2 or len(plain_text) > 80:
-        title = lines[0][:45]
-        context.user_data["new_m_title"] = title
-        context.user_data["new_m_photo"] = ""
-        context.user_data["new_m_desc"] = raw_text
-
-        text = (
-            f"✅ <b>Detected Title:</b> <code>{title}</code>\n"
-            f"📝 <b>Content Guide Saved!</b>\n\n"
-            f"Step 3/4: Send the <b>Required Referrals</b> number to unlock this method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
-            f"Send /cancel to abort."
-        )
-        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
-        return STATE_ADD_M_REFS
-
-    # Normal single-line title
     title = plain_text.strip()
     context.user_data["new_m_title"] = title
     
     text = (
-        f"✅ Title: <b>{title}</b>\n\n"
-        f"Step 2/4: Send the <b>Content / Guide</b> for this method.\n\n"
-        f"📷 <b>You can send a PHOTO with a caption</b>, or just send a <b>TEXT message</b> with instructions/links:\n\n"
+        f"✅ <b>Button Title:</b> <code>{title}</code>\n\n"
+        f"👉 <b>Step 2/4:</b> Now please send or <b>FORWARD the complete post / tutorial</b>.\n"
+        f"<i>(You can forward a post with Photo, Caption, Links, Code Blocks, or plain Text)</i>:\n\n"
         f"Send /cancel to abort."
     )
     await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
@@ -522,7 +502,7 @@ async def admin_add_m_title_received(update: Update, context: ContextTypes.DEFAU
 
 
 async def admin_add_m_content_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles method content (Text or Photo with caption)."""
+    """Handles method content (Text, Photo, Document, or Forwarded Post)."""
     msg = update.message
     if not msg:
         return STATE_ADD_M_CONTENT
@@ -532,6 +512,9 @@ async def admin_add_m_content_received(update: Update, context: ContextTypes.DEF
     
     if msg.photo:
         photo_file_id = msg.photo[-1].file_id
+        description = msg.caption_html if msg.caption_html else (msg.caption or "Method guide & details.")
+    elif msg.document and msg.document.mime_type and msg.document.mime_type.startswith("image/"):
+        photo_file_id = msg.document.file_id
         description = msg.caption_html if msg.caption_html else (msg.caption or "Method guide & details.")
     elif msg.text:
         description = msg.text_html if msg.text_html else msg.text
@@ -543,8 +526,8 @@ async def admin_add_m_content_received(update: Update, context: ContextTypes.DEF
     context.user_data["new_m_desc"] = description
     
     text = (
-        f"✅ Content & Photo saved!\n\n"
-        f"Step 3/4: Send the <b>Required Referrals</b> number to unlock this method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
+        f"✅ <b>Post & Tutorial Saved!</b>\n\n"
+        f"👉 <b>Step 3/4:</b> Send the <b>Required Referrals</b> number needed to unlock this method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
         f"Send /cancel to abort."
     )
     await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
@@ -562,8 +545,8 @@ async def admin_add_m_refs_received(update: Update, context: ContextTypes.DEFAUL
     currency = database.get_setting("currency_name", config.CURRENCY_NAME)
     
     text = (
-        f"✅ Required Referrals: <b>{text_input}</b>\n\n"
-        f"Step 4/4: Send the <b>Price in {currency}</b> (e.g. <code>0</code> for free with referrals, or <code>5.0</code>):\n\n"
+        f"✅ <b>Required Referrals:</b> <code>{text_input} invites</code>\n\n"
+        f"👉 <b>Step 4/4:</b> Send the <b>Price in {currency}</b> (e.g. <code>0</code> for free with referrals, or <code>5.0</code>):\n\n"
         f"Send /cancel to abort."
     )
     await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
@@ -571,7 +554,7 @@ async def admin_add_m_refs_received(update: Update, context: ContextTypes.DEFAUL
 
 
 async def admin_add_m_price_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Saves new dynamic method to database."""
+    """Saves new dynamic method to database and Firebase."""
     text_input = update.message.text.strip()
     try:
         price = float(text_input)
@@ -592,11 +575,11 @@ async def admin_add_m_price_received(update: Update, context: ContextTypes.DEFAU
     methods = database.get_all_methods()
     await update.message.reply_text(
         f"🎉 <b>Method Created Successfully!</b>\n\n"
-        f"💎 <b>Title:</b> {title}\n"
-        f"👥 <b>Required Referrals:</b> {refs}\n"
-        f"💵 <b>Price:</b> {price} {currency}\n"
-        f"🖼 <b>Photo:</b> {'Attached' if photo else 'None'}\n\n"
-        f"Users can now access and unlock this method directly from the bot menu!",
+        f"💎 <b>Button Title:</b> <code>{title}</code>\n"
+        f"👥 <b>Required Referrals:</b> <code>{refs} invites</code>\n"
+        f"💵 <b>Price:</b> <code>{price} {currency}</code>\n"
+        f"🖼 <b>Photo/Media:</b> {'✅ Attached' if photo else '❌ None'}\n\n"
+        f"Users will now see the <b>[{title}]</b> button directly in their main menu!",
         reply_markup=get_methods_manager_keyboard(methods),
         parse_mode=ParseMode.HTML
     )
