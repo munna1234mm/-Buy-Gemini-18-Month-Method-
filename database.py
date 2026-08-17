@@ -120,30 +120,33 @@ def init_db():
             )
         """)
 
-        # Set default settings
-        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
-                       ("currency_name", config.CURRENCY_NAME))
-        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", 
-                       ("referral_reward", str(config.DEFAULT_REFERRAL_REWARD)))
-        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", 
-                       ("min_withdraw", "5"))
-        
-        # Seed default Gemini method if empty
-        cursor.execute("SELECT COUNT(*) as count FROM methods")
-        if cursor.fetchone()["count"] == 0:
-            cursor.execute("""
-                INSERT INTO methods (id, title, description, photo_file_id, required_referrals, price)
-                VALUES (1, '💎 Gemini 18 Month Method', ?, '', 5, 0.0)
-            """, ("🌟 <b>Gemini 18 Month Method Guide</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Gemini 18 Month Method.\n\n<b>Details / Steps:</b>\n1. Follow the official setup guide.\n2. Apply the configuration.\n3. Enjoy 18 months access!\n\nFor support, contact admin.",))
-
         # Pre-seed initial config admins
         for admin_id in config.ADMIN_IDS:
             cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (admin_id,))
             
         conn.commit()
 
-    # Restore from Firebase Cloud Storage so no data is ever lost across server restarts / redeploys
+    # Restore from Firebase Cloud Storage so all methods, users, channels, and logs are loaded
     restore_from_firebase()
+
+    # Set default fallback settings/methods only if database is completely empty
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                       ("currency_name", config.CURRENCY_NAME))
+        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", 
+                       ("referral_reward", str(config.DEFAULT_REFERRAL_REWARD)))
+        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", 
+                       ("min_withdraw", "5"))
+
+        cursor.execute("SELECT COUNT(*) as count FROM methods")
+        if cursor.fetchone()["count"] == 0:
+            cursor.execute("""
+                INSERT INTO methods (id, title, description, photo_file_id, required_referrals, price)
+                VALUES (1, '💎 Gemini 18 Month Method', ?, '', 5, 0.0)
+            """, ("🌟 <b>Gemini 18 Month Method Guide</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Gemini 18 Month Method.\n\n<b>Details / Steps:</b>\n1. Follow the official setup guide.\n2. Apply the configuration.\n3. Enjoy 18 months access!\n\nFor support, contact admin.",))
+            conn.commit()
+            
     logger.info("Database initialized & synced with Firebase successfully.")
 
 
