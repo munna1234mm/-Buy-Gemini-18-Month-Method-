@@ -402,16 +402,24 @@ async def add_channel_direct_command(update: Update, context: ContextTypes.DEFAU
     result_text += "<i>Users must now join all active channels to use the bot.</i>"
 
     channels = database.get_all_channels()
-    await status_msg.edit_text(
-        result_text,
-        reply_markup=get_channels_manager_keyboard(channels),
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True
-    )
+    try:
+        await status_msg.edit_text(
+            result_text,
+            reply_markup=get_channels_manager_keyboard(channels),
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True
+        )
+    except Exception:
+        await msg.reply_text(
+            result_text,
+            reply_markup=get_channels_manager_keyboard(channels),
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True
+        )
 
 
 async def admin_auto_detect_channel_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """If an admin sends a channel link, username, or forwarded post, auto-process and add it."""
+    """If an admin sends a channel link, username, or forwarded post outside conversations, auto-process and add it."""
     user = update.effective_user
     msg = update.effective_message
     if not user or not msg or not await is_admin_authorized(update):
@@ -425,7 +433,14 @@ async def admin_auto_detect_channel_message(update: Update, context: ContextType
         is_channel_input = True
 
     if is_channel_input:
-        return await add_channel_id_received(update, context)
+        try:
+            return await add_channel_id_received(update, context)
+        except Exception as e:
+            logger.error(f"Error in auto detect channel: {e}")
+            try:
+                await msg.reply_text(f"⚠️ Could not process channel: {e}")
+            except Exception:
+                pass
 
 
 # --- SET REWARD CONVERSATION ---
