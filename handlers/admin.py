@@ -410,6 +410,24 @@ async def add_channel_direct_command(update: Update, context: ContextTypes.DEFAU
     )
 
 
+async def admin_auto_detect_channel_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """If an admin sends a channel link, username, or forwarded post, auto-process and add it."""
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or not msg or not await is_admin_authorized(update):
+        return
+
+    text = msg.text or msg.caption or ""
+    is_channel_input = False
+    if msg.forward_from_chat or (getattr(msg, "forward_origin", None) and getattr(msg.forward_origin, "chat", None)):
+        is_channel_input = True
+    elif "t.me/" in text or "telegram.me/" in text or (text.strip().startswith("@") and " " not in text.strip()):
+        is_channel_input = True
+
+    if is_channel_input:
+        return await add_channel_id_received(update, context)
+
+
 # --- SET REWARD CONVERSATION ---
 
 async def set_reward_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
