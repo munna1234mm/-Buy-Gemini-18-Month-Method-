@@ -3,16 +3,20 @@ from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 import database
 
 def get_user_inline_menu(is_admin_user: bool = False) -> InlineKeyboardMarkup:
-    """Clean user menu with Buy Gemini 18 Month Method, Referral Link and Balance."""
-    keyboard = [
-        [
-            InlineKeyboardButton("💎 Buy Gemini 18 Month Method", callback_data="user_gemini_method")
-        ],
-        [
-            InlineKeyboardButton("🔗 Referral Link", callback_data="user_ref_link"),
-            InlineKeyboardButton("💰 My Balance", callback_data="user_balance")
-        ]
-    ]
+    """User menu with dynamically loaded methods, Referral Link, and Balance."""
+    keyboard = []
+    
+    # Load all dynamic methods from database
+    methods = database.get_all_methods()
+    for m in methods:
+        btn_title = m.get("title", "💎 Premium Method")
+        keyboard.append([InlineKeyboardButton(btn_title, callback_data=f"user_method_{m['id']}")])
+    
+    # Main action buttons
+    keyboard.append([
+        InlineKeyboardButton("🔗 Referral Link", callback_data="user_ref_link"),
+        InlineKeyboardButton("💰 My Balance", callback_data="user_balance")
+    ])
 
     if is_admin_user:
         keyboard.append([InlineKeyboardButton("🛠 Admin Panel", callback_data="admin_main")])
@@ -21,7 +25,7 @@ def get_user_inline_menu(is_admin_user: bool = False) -> InlineKeyboardMarkup:
 
 
 def get_admin_inline_menu() -> InlineKeyboardMarkup:
-    """Clean admin panel menu with Gemini Method Settings."""
+    """Admin panel menu with Methods Manager."""
     keyboard = [
         [
             InlineKeyboardButton("📢 Manage Channels/Groups", callback_data="admin_channels"),
@@ -29,7 +33,7 @@ def get_admin_inline_menu() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("⚙️ Set Referral Reward", callback_data="admin_reward"),
-            InlineKeyboardButton("💎 Gemini Method Settings", callback_data="admin_gemini_settings")
+            InlineKeyboardButton("📚 Manage Methods", callback_data="admin_methods")
         ],
         [
             InlineKeyboardButton("📣 Broadcast Message", callback_data="admin_broadcast"),
@@ -39,18 +43,37 @@ def get_admin_inline_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_gemini_settings_keyboard() -> InlineKeyboardMarkup:
-    """Admin settings menu for Gemini 18 Month Method."""
+def get_methods_manager_keyboard(methods: List[Dict[str, Any]]) -> InlineKeyboardMarkup:
+    """List of methods with Add and Manage options."""
+    keyboard = []
+    for m in methods:
+        title = m.get("title", f"Method #{m['id']}")
+        keyboard.append([InlineKeyboardButton(f"⚙️ {title[:25]}", callback_data=f"manage_method_{m['id']}")])
+    
+    keyboard.append([
+        InlineKeyboardButton("➕ Add New Method", callback_data="admin_add_method")
+    ])
+    keyboard.append([
+        InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_main")
+    ])
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_single_method_manage_keyboard(method_id: int) -> InlineKeyboardMarkup:
+    """Settings menu for a specific method."""
     keyboard = [
         [
-            InlineKeyboardButton("📝 Edit Method Content/Details", callback_data="admin_set_gemini_content")
+            InlineKeyboardButton("📝 Edit Content & Photo", callback_data=f"edit_m_content_{method_id}")
         ],
         [
-            InlineKeyboardButton("👥 Set Required Referrals", callback_data="admin_set_gemini_refs"),
-            InlineKeyboardButton("💵 Set USDT Price", callback_data="admin_set_gemini_price")
+            InlineKeyboardButton("👥 Set Required Refs", callback_data=f"edit_m_refs_{method_id}"),
+            InlineKeyboardButton("💵 Set USDT Price", callback_data=f"edit_m_price_{method_id}")
         ],
         [
-            InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_main")
+            InlineKeyboardButton("❌ Delete This Method", callback_data=f"del_method_{method_id}")
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Methods List", callback_data="admin_methods")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)

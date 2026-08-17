@@ -107,6 +107,19 @@ def init_db():
             )
         """)
 
+        # Methods table (supports multiple methods with text, images, required refs, and price)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS methods (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                photo_file_id TEXT DEFAULT '',
+                required_referrals INTEGER DEFAULT 5,
+                price REAL DEFAULT 0.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Set default settings
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                        ("currency_name", config.CURRENCY_NAME))
@@ -114,13 +127,15 @@ def init_db():
                        ("referral_reward", str(config.DEFAULT_REFERRAL_REWARD)))
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", 
                        ("min_withdraw", "5"))
-        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", 
-                       ("gemini_required_referrals", "5"))
-        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", 
-                       ("gemini_method_price", "0.0"))
-        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", 
-                       ("gemini_method_content", "🌟 <b>Gemini 18 Month Method Guide</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Gemini 18 Month Method.\n\n<b>Details / Steps:</b>\n1. Follow the official setup guide.\n2. Apply the configuration.\n3. Enjoy 18 months access!\n\nFor support, contact admin."))
         
+        # Seed default Gemini method if empty
+        cursor.execute("SELECT COUNT(*) as count FROM methods")
+        if cursor.fetchone()["count"] == 0:
+            cursor.execute("""
+                INSERT INTO methods (id, title, description, photo_file_id, required_referrals, price)
+                VALUES (1, '💎 Gemini 18 Month Method', ?, '', 5, 0.0)
+            """, ("🌟 <b>Gemini 18 Month Method Guide</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Gemini 18 Month Method.\n\n<b>Details / Steps:</b>\n1. Follow the official setup guide.\n2. Apply the configuration.\n3. Enjoy 18 months access!\n\nFor support, contact admin.",))
+
         # Pre-seed initial config admins
         for admin_id in config.ADMIN_IDS:
             cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (admin_id,))
@@ -133,7 +148,7 @@ def init_db():
 
 
 def restore_from_firebase():
-    """Restores users, channels, settings, and logs from Firebase into local SQLite."""
+    """Restores users, channels, settings, methods, and logs from Firebase into local SQLite."""
     try:
         fb_data = firebase_fetch("")
         if not fb_data or not isinstance(fb_data, dict):
@@ -182,6 +197,23 @@ def restore_from_firebase():
                             chdata.get("invite_link", "")
                         ))
 
+            # Restore Methods
+            fb_methods = fb_data.get("methods", {})
+            if isinstance(fb_methods, dict):
+                for mid_str, mdata in fb_methods.items():
+                    if isinstance(mdata, dict) and "title" in mdata:
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO methods (id, title, description, photo_file_id, required_referrals, price)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (
+                            mdata.get("id", int(mid_str) if mid_str.isdigit() else None),
+                            mdata["title"],
+                            mdata.get("description", ""),
+                            mdata.get("photo_file_id", ""),
+                            mdata.get("required_referrals", 5),
+                            mdata.get("price", 0.0)
+                        ))
+
             # Restore Referral Logs
             fb_logs = fb_data.get("referral_logs", {})
             if isinstance(fb_logs, dict):
@@ -202,6 +234,81 @@ def restore_from_firebase():
             logger.info("Successfully restored and synced cloud data from Firebase.")
     except Exception as e:
         logger.warning(f"Failed to restore cloud data from Firebase: {e}")
+
+
+# --- DYNAMIC METHODS OPERATIONS ---
+
+def add_method(title: str, description: str, photo_file_id: str = "", required_referrals: int = 5, price: float = 0.0) -> int:
+    """Adds a new method and syncs to Firebase."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO methods (title, description, photo_file_id, required_referrals, price)
+            VALUES (?, ?, ?, ?, ?)
+        """, (title, description, photo_file_id, required_referrals, price))
+        conn.commit()
+        method_id = cursor.lastrowid
+        cursor.execute("SELECT * FROM methods WHERE id = ?", (method_id,))
+        m = cursor.fetchone()
+        if m:
+            m_dict = dict(m)
+            firebase_sync_async(f"methods/{method_id}", m_dict, "PUT")
+        return method_id
+
+
+def update_method(method_id: int, title: str = None, description: str = None, photo_file_id: str = None, required_referrals: int = None, price: float = None) -> bool:
+    """Updates an existing method and syncs to Firebase."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM methods WHERE id = ?", (method_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+        
+        new_title = title if title is not None else row["title"]
+        new_desc = description if description is not None else row["description"]
+        new_photo = photo_file_id if photo_file_id is not None else row["photo_file_id"]
+        new_refs = required_referrals if required_referrals is not None else row["required_referrals"]
+        new_price = price if price is not None else row["price"]
+        
+        cursor.execute("""
+            UPDATE methods
+            SET title = ?, description = ?, photo_file_id = ?, required_referrals = ?, price = ?
+            WHERE id = ?
+        """, (new_title, new_desc, new_photo, new_refs, new_price, method_id))
+        conn.commit()
+        
+        cursor.execute("SELECT * FROM methods WHERE id = ?", (method_id,))
+        m_dict = dict(cursor.fetchone())
+        firebase_sync_async(f"methods/{method_id}", m_dict, "PUT")
+        return True
+
+
+def delete_method(method_id: int) -> bool:
+    """Deletes a method and removes from Firebase."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM methods WHERE id = ?", (method_id,))
+        conn.commit()
+        firebase_sync_async(f"methods/{method_id}", None, "DELETE")
+        return cursor.rowcount > 0
+
+
+def get_all_methods() -> List[Dict[str, Any]]:
+    """Returns all available methods."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM methods ORDER BY id ASC")
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def get_method(method_id: int) -> Optional[Dict[str, Any]]:
+    """Returns a single method by ID."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM methods WHERE id = ?", (method_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
 
 # --- USER OPERATIONS ---
@@ -485,6 +592,9 @@ def get_stats() -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) as total_channels FROM channels")
         total_channels = cursor.fetchone()["total_channels"]
         
+        cursor.execute("SELECT COUNT(*) as total_methods FROM methods")
+        total_methods = cursor.fetchone()["total_methods"]
+        
         cursor.execute("SELECT SUM(referral_count) as total_referrals, SUM(balance) as total_balance FROM users")
         row = cursor.fetchone()
         total_referrals = row["total_referrals"] or 0
@@ -494,6 +604,7 @@ def get_stats() -> Dict[str, Any]:
             "total_users": total_users,
             "verified_users": verified_users,
             "total_channels": total_channels,
+            "total_methods": total_methods,
             "total_referrals": total_referrals,
             "total_balance": round(total_balance, 2)
         }

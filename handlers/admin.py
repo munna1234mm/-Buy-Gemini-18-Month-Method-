@@ -1,5 +1,6 @@
 import logging
 import asyncio
+from typing import Any
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ContextTypes,
@@ -14,7 +15,13 @@ from telegram.error import TelegramError
 
 import database
 import config
-from keyboards import get_admin_inline_menu, get_channels_manager_keyboard, get_gemini_settings_keyboard, get_cancel_keyboard
+from keyboards import (
+    get_admin_inline_menu,
+    get_channels_manager_keyboard,
+    get_methods_manager_keyboard,
+    get_single_method_manage_keyboard,
+    get_cancel_keyboard
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +30,14 @@ STATE_ADD_CHANNEL_ID = 1
 STATE_ADD_CHANNEL_LINK = 2
 STATE_SET_REWARD = 3
 STATE_BROADCAST = 4
-STATE_SET_GEMINI_CONTENT = 5
-STATE_SET_GEMINI_REFS = 6
-STATE_SET_GEMINI_PRICE = 7
+STATE_ADD_M_TITLE = 5
+STATE_ADD_M_CONTENT = 6
+STATE_ADD_M_REFS = 7
+STATE_ADD_M_PRICE = 8
+STATE_EDIT_M_CONTENT = 9
+STATE_EDIT_M_REFS = 10
+STATE_EDIT_M_PRICE = 11
+
 
 async def is_admin_authorized(update: Update) -> bool:
     """Helper to check if user is admin."""
@@ -59,17 +71,25 @@ async def admin_command_handler(update: Update, context: ContextTypes.DEFAULT_TY
         f"👥 <b>Total Users:</b> <code>{stats['total_users']}</code>\n"
         f"✅ <b>Verified Members:</b> <code>{stats['verified_users']}</code>\n"
         f"📢 <b>Active Channels/Groups:</b> <code>{stats['total_channels']}</code>\n"
+        f"📚 <b>Active Methods:</b> <code>{stats.get('total_methods', 1)}</code>\n"
         f"🏆 <b>Total Referrals:</b> <code>{stats['total_referrals']}</code>\n"
         f"💰 <b>Total Balance Issued:</b> <code>{stats['total_balance']}</code>\n\n"
         f"<i>Select an option from the menu below:</i>"
     )
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=get_admin_inline_menu(),
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            await update.callback_query.edit_message_text(
+                text,
+                reply_markup=get_admin_inline_menu(),
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            await update.callback_query.message.reply_text(
+                text,
+                reply_markup=get_admin_inline_menu(),
+                parse_mode=ParseMode.HTML
+            )
     else:
         await update.effective_message.reply_text(
             text,
@@ -96,36 +116,74 @@ async def admin_menu_callback_handler(update: Update, context: ContextTypes.DEFA
             f"👥 <b>Total Users:</b> <code>{stats['total_users']}</code>\n"
             f"✅ <b>Verified Members:</b> <code>{stats['verified_users']}</code>\n"
             f"📢 <b>Active Channels/Groups:</b> <code>{stats['total_channels']}</code>\n"
+            f"📚 <b>Active Methods:</b> <code>{stats.get('total_methods', 1)}</code>\n"
             f"🏆 <b>Total Referrals:</b> <code>{stats['total_referrals']}</code>\n"
             f"💰 <b>Total Balance Issued:</b> <code>{stats['total_balance']}</code>\n\n"
             f"<i>Select an option below:</i>"
         )
-        await query.edit_message_text(text, reply_markup=get_admin_inline_menu(), parse_mode=ParseMode.HTML)
+        try:
+            await query.edit_message_text(text, reply_markup=get_admin_inline_menu(), parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(text, reply_markup=get_admin_inline_menu(), parse_mode=ParseMode.HTML)
 
-    elif data == "admin_gemini_settings":
-        required_refs = database.get_setting("gemini_required_referrals", "5")
-        method_price = database.get_setting("gemini_method_price", "0.0")
-        currency = database.get_setting("currency_name", config.CURRENCY_NAME)
-        content_preview = database.get_setting("gemini_method_content", "No content set yet.")
-
-        # Strip HTML for preview safely to prevent Telegram parse errors
-        import re
-        clean_preview = re.sub(r'<[^>]+>', '', content_preview).strip()
-        if len(clean_preview) > 180:
-            clean_preview = clean_preview[:180] + "..."
-
+    elif data == "admin_methods":
+        methods = database.get_all_methods()
         text = (
-            f"💎 <b>Gemini 18 Month Method Settings</b>\n\n"
-            f"👥 <b>Required Referrals to Unlock:</b> <code>{required_refs} invites</code>\n"
-            f"💵 <b>USDT Price:</b> <code>{method_price} {currency}</code>\n\n"
-            f"📝 <b>Current Content Preview:</b>\n"
-            f"<i>{clean_preview}</i>\n\n"
-            f"<i>Choose an option below to update:</i>"
+            f"📚 <b>Methods & Courses Manager</b>\n\n"
+            f"Total Available Methods: <b>{len(methods)}</b>\n\n"
+            f"<i>Click on any method below to view, edit content/photo, required referrals, price, or delete. Click '➕ Add New Method' to create a new one:</i>"
         )
         try:
-            await query.edit_message_text(text, reply_markup=get_gemini_settings_keyboard(), parse_mode=ParseMode.HTML)
+            await query.edit_message_text(text, reply_markup=get_methods_manager_keyboard(methods), parse_mode=ParseMode.HTML)
         except Exception:
-            await query.message.reply_text(text, reply_markup=get_gemini_settings_keyboard(), parse_mode=ParseMode.HTML)
+            await query.message.reply_text(text, reply_markup=get_methods_manager_keyboard(methods), parse_mode=ParseMode.HTML)
+
+    elif data.startswith("manage_method_"):
+        mid = int(data.split("_")[2])
+        m = database.get_method(mid)
+        if not m:
+            await query.answer("❌ Method not found.", show_alert=True)
+            return
+        
+        currency = database.get_setting("currency_name", config.CURRENCY_NAME)
+        import re
+        clean_desc = re.sub(r'<[^>]+>', '', m.get("description", "")).strip()
+        if len(clean_desc) > 150:
+            clean_desc = clean_desc[:150] + "..."
+            
+        has_photo = "✅ Yes" if m.get("photo_file_id") else "❌ No"
+        
+        text = (
+            f"💎 <b>Method Settings: {m['title']}</b>\n\n"
+            f"👥 <b>Required Referrals:</b> <code>{m['required_referrals']} invites</code>\n"
+            f"💵 <b>USDT Price:</b> <code>{m['price']} {currency}</code>\n"
+            f"🖼 <b>Has Photo/Image:</b> {has_photo}\n\n"
+            f"📝 <b>Content Preview:</b>\n"
+            f"<i>{clean_desc}</i>\n\n"
+            f"<i>Choose an action below to update or delete:</i>"
+        )
+        try:
+            await query.edit_message_text(text, reply_markup=get_single_method_manage_keyboard(mid), parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(text, reply_markup=get_single_method_manage_keyboard(mid), parse_mode=ParseMode.HTML)
+
+    elif data.startswith("del_method_"):
+        mid = int(data.split("_")[2])
+        m = database.get_method(mid)
+        if m:
+            database.delete_method(mid)
+            await query.answer(f"✅ Deleted {m['title']}", show_alert=True)
+        methods = database.get_all_methods()
+        text = (
+            f"📚 <b>Methods & Courses Manager</b>\n\n"
+            f"Method deleted successfully!\n"
+            f"Total Available Methods: <b>{len(methods)}</b>\n\n"
+            f"<i>Click on any method below or add a new one:</i>"
+        )
+        try:
+            await query.edit_message_text(text, reply_markup=get_methods_manager_keyboard(methods), parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(text, reply_markup=get_methods_manager_keyboard(methods), parse_mode=ParseMode.HTML)
 
     elif data == "admin_channels":
         channels = database.get_all_channels()
@@ -135,11 +193,10 @@ async def admin_menu_callback_handler(update: Update, context: ContextTypes.DEFA
             f"Users MUST join all these channels and groups before using the bot.\n\n"
             f"<i>Click on any channel below to remove it, or click '➕ Add Channel / Group'.</i>"
         )
-        await query.edit_message_text(
-            text,
-            reply_markup=get_channels_manager_keyboard(channels),
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            await query.edit_message_text(text, reply_markup=get_channels_manager_keyboard(channels), parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(text, reply_markup=get_channels_manager_keyboard(channels), parse_mode=ParseMode.HTML)
 
     elif data.startswith("del_channel_"):
         channel_id = int(data.split("_")[2])
@@ -148,37 +205,23 @@ async def admin_menu_callback_handler(update: Update, context: ContextTypes.DEFA
             database.remove_channel(channel_id)
             await query.answer(f"✅ Removed {ch['title']}", show_alert=True)
         channels = database.get_all_channels()
-        await query.edit_message_text(
-            f"📢 <b>Mandatory Channels & Groups Manager</b>\n\nChannel removed successfully!\nTotal Channels: <b>{len(channels)}</b>",
-            reply_markup=get_channels_manager_keyboard(channels),
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            await query.edit_message_text(
+                f"📢 <b>Mandatory Channels & Groups Manager</b>\n\nChannel removed successfully!\nTotal Channels: <b>{len(channels)}</b>",
+                reply_markup=get_channels_manager_keyboard(channels),
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
 
     elif data == "admin_close":
         await query.edit_message_text("🔒 Admin panel closed.")
 
 
-
 # --- CHANNEL ADD CONVERSATION ---
-
-async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Starts add channel/group flow."""
-    query = update.callback_query
-    await query.answer()
-
-    text = (
-        f"➕ <b>Add Channel or Group</b>\n\n"
-        f"1. <b>First, make sure to add this bot as an ADMIN in your Channel or Group!</b>\n"
-        f"2. Send the Channel/Group <b>Username</b> (e.g. <code>@MyChannel</code>) or <b>Chat ID</b> (e.g. <code>-1001234567890</code>):\n\n"
-        f"Send /cancel to abort."
-    )
-    await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_channels"), parse_mode=ParseMode.HTML)
-    return STATE_ADD_CHANNEL_ID
-
 
 def extract_chat_identifier(chat_input: str, msg: Any) -> Any:
     """Extracts chat ID or username from text, t.me links, or forwarded messages."""
-    # Check if forwarded from channel
     if msg:
         if hasattr(msg, "forward_from_chat") and msg.forward_from_chat:
             return msg.forward_from_chat.id
@@ -189,11 +232,25 @@ def extract_chat_identifier(chat_input: str, msg: Any) -> Any:
     if (raw.startswith("-") and raw[1:].isdigit()) or raw.isdigit():
         return int(raw)
 
-    # Handle t.me links
     cleaned = raw.replace("https://", "").replace("http://", "").replace("t.me/", "").replace("telegram.me/", "").strip("/")
     if not cleaned.startswith("@") and not cleaned.startswith("+"):
         cleaned = f"@{cleaned}"
     return cleaned
+
+
+async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Starts add channel/group flow."""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        f"➕ <b>Add Channel or Group</b>\n\n"
+        f"1. <b>First, make sure to add this bot as an ADMIN in your Channel or Group!</b>\n"
+        f"2. Send the Channel/Group <b>Username</b> (e.g. <code>@MyChannel</code>), <b>Link</b> (e.g. <code>https://t.me/MyChannel</code>), or <b>Forward a message</b> here:\n\n"
+        f"Send /cancel to abort."
+    )
+    await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_channels"), parse_mode=ParseMode.HTML)
+    return STATE_ADD_CHANNEL_ID
 
 
 async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -381,131 +438,248 @@ async def broadcast_received(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return ConversationHandler.END
 
 
-# --- GEMINI METHOD SETTINGS CONVERSATIONS ---
+# --- ADD METHOD CONVERSATION ---
 
-# 1. Method Content / Tutorial / Delivery Text
-async def set_gemini_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Prompts admin for new method content/text/links."""
+async def admin_add_method_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Starts the dynamic method creation flow."""
     query = update.callback_query
     if query:
         await query.answer()
+        text = (
+            "➕ <b>Add New Method / Course</b>\n\n"
+            "Step 1/4: Send the <b>Title / Name</b> for this method (e.g. <code>💎 Gemini 18 Month Method</code> or <code>🎨 Canva Pro Lifetime</code>):\n\n"
+            "Send /cancel to abort."
+        )
+        try:
+            await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
+        except Exception:
+            await query.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
+    return STATE_ADD_M_TITLE
 
+
+async def admin_add_m_title_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles method title input."""
+    title = update.message.text.strip()
+    context.user_data["new_m_title"] = title
+    
     text = (
-        f"📝 <b>Edit Gemini 18 Month Method Content</b>\n\n"
-        f"Send the complete text, guide, instructions, accounts, or links that users will see when they unlock/purchase the method.\n\n"
-        f"<i>Supports Telegram text & formatting.</i>\n\n"
+        f"✅ Title: <b>{title}</b>\n\n"
+        f"Step 2/4: Send the <b>Content / Guide</b> for this method.\n\n"
+        f"📷 <b>You can send a PHOTO with a caption</b>, or just send a <b>TEXT message</b> with instructions/links:\n\n"
         f"Send /cancel to abort."
     )
-    if query:
-        try:
-            await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
-        except Exception:
-            await query.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
-    elif update.message:
-        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
-    return STATE_SET_GEMINI_CONTENT
+    await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
+    return STATE_ADD_M_CONTENT
 
 
-async def set_gemini_content_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Saves new Gemini Method content."""
-    content = update.message.text_html if update.message.text_html else update.message.text
-    database.set_setting("gemini_method_content", content)
+async def admin_add_m_content_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles method content (Text or Photo with caption)."""
+    msg = update.message
+    photo_file_id = ""
+    description = ""
+    
+    if msg.photo:
+        photo_file_id = msg.photo[-1].file_id
+        description = msg.caption_html if msg.caption_html else (msg.caption or "Method guide & details.")
+    elif msg.text:
+        description = msg.text_html if msg.text_html else msg.text
+    else:
+        await msg.reply_text("❌ Please send either a text message or a photo with a caption.")
+        return STATE_ADD_M_CONTENT
 
-    await update.message.reply_text(
-        f"✅ <b>Gemini 18 Month Method content updated successfully!</b>\n\n"
-        f"Eligible users who click the button will now receive this updated guide.",
-        reply_markup=get_admin_inline_menu(),
-        parse_mode=ParseMode.HTML
-    )
-    return ConversationHandler.END
-
-
-# 2. Required Referrals Limit
-async def set_gemini_refs_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Prompts admin for required referrals limit."""
-    query = update.callback_query
-    if query:
-        await query.answer()
-
-    current_refs = database.get_setting("gemini_required_referrals", "5")
+    context.user_data["new_m_photo"] = photo_file_id
+    context.user_data["new_m_desc"] = description
+    
     text = (
-        f"👥 <b>Set Required Referrals Limit</b>\n\n"
-        f"Current Requirement: <b>{current_refs} referrals</b>\n\n"
-        f"Send the number of invited friends needed to unlock the method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
+        f"✅ Content & Photo saved!\n\n"
+        f"Step 3/4: Send the <b>Required Referrals</b> number to unlock this method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
         f"Send /cancel to abort."
     )
-    if query:
-        try:
-            await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
-        except Exception:
-            await query.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
-    elif update.message:
-        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
-    return STATE_SET_GEMINI_REFS
+    await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
+    return STATE_ADD_M_REFS
 
 
-async def set_gemini_refs_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Saves new referral limit requirement."""
-    input_text = update.message.text.strip()
-    if not input_text.isdigit():
-        await update.message.reply_text("❌ Please enter a valid integer number (e.g. 5 or 10).")
-        return STATE_SET_GEMINI_REFS
-
-    val = int(input_text)
-    database.set_setting("gemini_required_referrals", str(val))
-
-    await update.message.reply_text(
-        f"✅ <b>Required referral limit updated to {val} invites!</b>\n\n"
-        f"Users now must invite at least {val} friends to unlock the Gemini 18 Month Method.",
-        reply_markup=get_admin_inline_menu(),
-        parse_mode=ParseMode.HTML
-    )
-    return ConversationHandler.END
-
-
-# 3. USDT Price (Optional)
-async def set_gemini_price_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Prompts admin for USDT price."""
-    query = update.callback_query
-    if query:
-        await query.answer()
-
-    current_price = database.get_setting("gemini_method_price", "0.0")
+async def admin_add_m_refs_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles required referrals input."""
+    text_input = update.message.text.strip()
+    if not text_input.isdigit():
+        await update.message.reply_text("❌ Please enter a valid integer number (e.g. 5 or 0).")
+        return STATE_ADD_M_REFS
+        
+    context.user_data["new_m_refs"] = int(text_input)
     currency = database.get_setting("currency_name", config.CURRENCY_NAME)
-
+    
     text = (
-        f"💵 <b>Set Gemini Method USDT Price</b>\n\n"
-        f"Current Price: <b>{current_price} {currency}</b>\n\n"
-        f"Send the price in USDT (e.g. <code>0</code> for free with referrals, or <code>10.0</code>):\n\n"
+        f"✅ Required Referrals: <b>{text_input}</b>\n\n"
+        f"Step 4/4: Send the <b>Price in {currency}</b> (e.g. <code>0</code> for free with referrals, or <code>5.0</code>):\n\n"
         f"Send /cancel to abort."
     )
-    if query:
-        try:
-            await query.edit_message_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
-        except Exception:
-            await query.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
-    elif update.message:
-        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_gemini_settings"), parse_mode=ParseMode.HTML)
-    return STATE_SET_GEMINI_PRICE
+    await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
+    return STATE_ADD_M_PRICE
 
 
-async def set_gemini_price_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Saves new USDT price."""
-    input_text = update.message.text.strip()
+async def admin_add_m_price_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Saves new dynamic method to database."""
+    text_input = update.message.text.strip()
     try:
-        val = float(input_text)
-        if val < 0:
+        price = float(text_input)
+        if price < 0:
             raise ValueError()
     except ValueError:
         await update.message.reply_text("❌ Please enter a valid positive number.")
-        return STATE_SET_GEMINI_PRICE
+        return STATE_ADD_M_PRICE
 
-    database.set_setting("gemini_method_price", str(val))
+    title = context.user_data.get("new_m_title", "New Method")
+    desc = context.user_data.get("new_m_desc", "")
+    photo = context.user_data.get("new_m_photo", "")
+    refs = context.user_data.get("new_m_refs", 5)
     currency = database.get_setting("currency_name", config.CURRENCY_NAME)
 
+    database.add_method(title=title, description=desc, photo_file_id=photo, required_referrals=refs, price=price)
+    
+    methods = database.get_all_methods()
     await update.message.reply_text(
-        f"✅ <b>Gemini Method price updated to {val:.2f} {currency}!</b>",
-        reply_markup=get_admin_inline_menu(),
+        f"🎉 <b>Method Created Successfully!</b>\n\n"
+        f"💎 <b>Title:</b> {title}\n"
+        f"👥 <b>Required Referrals:</b> {refs}\n"
+        f"💵 <b>Price:</b> {price} {currency}\n"
+        f"🖼 <b>Photo:</b> {'Attached' if photo else 'None'}\n\n"
+        f"Users can now access and unlock this method directly from the bot menu!",
+        reply_markup=get_methods_manager_keyboard(methods),
+        parse_mode=ParseMode.HTML
+    )
+    return ConversationHandler.END
+
+
+# --- EDIT METHOD CONVERSATIONS ---
+
+async def admin_edit_m_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Starts editing content/photo for a specific method."""
+    query = update.callback_query
+    await query.answer()
+    mid = int(query.data.split("_")[3])
+    context.user_data["edit_target_method_id"] = mid
+    
+    m = database.get_method(mid)
+    title = m["title"] if m else "Method"
+    
+    text = (
+        f"📝 <b>Edit Content & Photo for: {title}</b>\n\n"
+        f"Send the new text guide OR send a <b>PHOTO with caption</b>:\n\n"
+        f"Send /cancel to abort."
+    )
+    try:
+        await query.edit_message_text(text, reply_markup=get_cancel_keyboard(f"manage_method_{mid}"), parse_mode=ParseMode.HTML)
+    except Exception:
+        await query.message.reply_text(text, reply_markup=get_cancel_keyboard(f"manage_method_{mid}"), parse_mode=ParseMode.HTML)
+    return STATE_EDIT_M_CONTENT
+
+
+async def admin_edit_m_content_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Saves updated content/photo for method."""
+    mid = context.user_data.get("edit_target_method_id")
+    msg = update.message
+    photo_file_id = ""
+    description = ""
+    
+    if msg.photo:
+        photo_file_id = msg.photo[-1].file_id
+        description = msg.caption_html if msg.caption_html else (msg.caption or "")
+    elif msg.text:
+        description = msg.text_html if msg.text_html else msg.text
+        
+    database.update_method(mid, description=description, photo_file_id=photo_file_id)
+    
+    await update.message.reply_text(
+        "✅ <b>Method content & photo updated successfully!</b>",
+        reply_markup=get_single_method_manage_keyboard(mid),
+        parse_mode=ParseMode.HTML
+    )
+    return ConversationHandler.END
+
+
+async def admin_edit_m_refs_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Starts editing required referrals for a method."""
+    query = update.callback_query
+    await query.answer()
+    mid = int(query.data.split("_")[3])
+    context.user_data["edit_target_method_id"] = mid
+    m = database.get_method(mid)
+    current_refs = m["required_referrals"] if m else 5
+    
+    text = (
+        f"👥 <b>Set Required Referrals for: {m['title'] if m else ''}</b>\n\n"
+        f"Current: <b>{current_refs} referrals</b>\n\n"
+        f"Send the new number of referrals needed to unlock (e.g. <code>5</code>, <code>10</code>, or <code>0</code>):\n\n"
+        f"Send /cancel to abort."
+    )
+    try:
+        await query.edit_message_text(text, reply_markup=get_cancel_keyboard(f"manage_method_{mid}"), parse_mode=ParseMode.HTML)
+    except Exception:
+        await query.message.reply_text(text, reply_markup=get_cancel_keyboard(f"manage_method_{mid}"), parse_mode=ParseMode.HTML)
+    return STATE_EDIT_M_REFS
+
+
+async def admin_edit_m_refs_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Saves updated referrals limit."""
+    mid = context.user_data.get("edit_target_method_id")
+    text_input = update.message.text.strip()
+    if not text_input.isdigit():
+        await update.message.reply_text("❌ Please enter a valid number (e.g. 5 or 0).")
+        return STATE_EDIT_M_REFS
+        
+    refs = int(text_input)
+    database.update_method(mid, required_referrals=refs)
+    
+    await update.message.reply_text(
+        f"✅ <b>Required referrals updated to {refs} invites!</b>",
+        reply_markup=get_single_method_manage_keyboard(mid),
+        parse_mode=ParseMode.HTML
+    )
+    return ConversationHandler.END
+
+
+async def admin_edit_m_price_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Starts editing price for a method."""
+    query = update.callback_query
+    await query.answer()
+    mid = int(query.data.split("_")[3])
+    context.user_data["edit_target_method_id"] = mid
+    m = database.get_method(mid)
+    current_price = m["price"] if m else 0.0
+    currency = database.get_setting("currency_name", config.CURRENCY_NAME)
+    
+    text = (
+        f"💵 <b>Set USDT Price for: {m['title'] if m else ''}</b>\n\n"
+        f"Current Price: <b>{current_price} {currency}</b>\n\n"
+        f"Send the new price in USDT (e.g. <code>0</code> or <code>10.0</code>):\n\n"
+        f"Send /cancel to abort."
+    )
+    try:
+        await query.edit_message_text(text, reply_markup=get_cancel_keyboard(f"manage_method_{mid}"), parse_mode=ParseMode.HTML)
+    except Exception:
+        await query.message.reply_text(text, reply_markup=get_cancel_keyboard(f"manage_method_{mid}"), parse_mode=ParseMode.HTML)
+    return STATE_EDIT_M_PRICE
+
+
+async def admin_edit_m_price_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Saves updated price."""
+    mid = context.user_data.get("edit_target_method_id")
+    text_input = update.message.text.strip()
+    try:
+        price = float(text_input)
+        if price < 0:
+            raise ValueError()
+    except ValueError:
+        await update.message.reply_text("❌ Please enter a valid positive number.")
+        return STATE_EDIT_M_PRICE
+        
+    currency = database.get_setting("currency_name", config.CURRENCY_NAME)
+    database.update_method(mid, price=price)
+    
+    await update.message.reply_text(
+        f"✅ <b>Price updated to {price:.2f} {currency}!</b>",
+        reply_markup=get_single_method_manage_keyboard(mid),
         parse_mode=ParseMode.HTML
     )
     return ConversationHandler.END
@@ -515,8 +689,10 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels ongoing conversation."""
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text("❌ Action cancelled.", reply_markup=get_admin_inline_menu())
+        try:
+            await update.callback_query.edit_message_text("❌ Action cancelled.", reply_markup=get_admin_inline_menu())
+        except Exception:
+            await update.callback_query.message.reply_text("❌ Action cancelled.", reply_markup=get_admin_inline_menu())
     elif update.message:
         await update.message.reply_text("❌ Action cancelled.", reply_markup=get_admin_inline_menu())
     return ConversationHandler.END
-

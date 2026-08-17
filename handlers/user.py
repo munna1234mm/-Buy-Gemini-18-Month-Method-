@@ -241,8 +241,8 @@ async def user_balance_callback(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
-async def user_gemini_method_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles '💎 Buy Gemini 18 Month Method' button click."""
+async def user_method_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles click on any dynamic method button."""
     query = update.callback_query
     await query.answer()
 
@@ -251,35 +251,57 @@ async def user_gemini_method_callback(update: Update, context: ContextTypes.DEFA
     if not user:
         return
 
-    # Check required referrals limit set by admin
-    required_refs = int(database.get_setting("gemini_required_referrals", "5"))
-    method_price = float(database.get_setting("gemini_method_price", "0.0"))
-    method_content = database.get_setting("gemini_method_content", "Method details will be added soon by admin.")
+    data = query.data
+    try:
+        method_id = int(data.split("_")[2])
+    except (IndexError, ValueError):
+        method_id = 1
+
+    method = database.get_method(method_id)
+    if not method:
+        await query.answer("❌ This method is no longer available.", show_alert=True)
+        try:
+            await query.edit_message_text(
+                "❌ This method is no longer available.",
+                reply_markup=get_back_to_user_keyboard()
+            )
+        except Exception:
+            pass
+        return
+
+    required_refs = int(method.get("required_referrals", 0))
+    method_price = float(method.get("price", 0.0))
     currency = database.get_setting("currency_name", config.CURRENCY_NAME)
     user_refs = user.get("referral_count", 0)
     user_balance = float(user.get("balance", 0.0))
 
     if user_refs < required_refs:
-        # User has not reached the referral requirement
         remaining = required_refs - user_refs
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔗 Get Referral Link", callback_data="user_ref_link")],
             [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="user_main_menu")]
         ])
         text = (
-            f"🔒 <b>Gemini 18 Month Method is Locked!</b>\n\n"
+            f"🔒 <b>{method['title']} is Locked!</b>\n\n"
             f"⚠️ <b>Referral Requirement:</b>\n"
             f"You need at least <b>{required_refs} referrals</b> to unlock this method.\n\n"
             f"📊 <b>Your Progress:</b>\n"
             f"• Current Referrals: <code>{user_refs} / {required_refs}</code>\n"
             f"• Still Needed: <b>{remaining} more friend(s)</b>\n\n"
-            f"<i>Invite your friends using your referral link to unlock full access to the method!</i>"
+            f"<i>Invite your friends using your referral link to unlock full access!</i>"
         )
-        await query.edit_message_text(
-            text,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            await query.edit_message_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            await query.message.reply_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML
+            )
         return
 
     # If price is required and balance is not enough
@@ -289,35 +311,65 @@ async def user_gemini_method_callback(update: Update, context: ContextTypes.DEFA
             [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="user_main_menu")]
         ])
         text = (
-            f"💎 <b>Gemini 18 Month Method</b>\n\n"
+            f"💎 <b>{method['title']}</b>\n\n"
             f"✅ Referral Requirement Met ({user_refs}/{required_refs} invites)!\n"
             f"💵 <b>Price:</b> <code>{method_price:.2f} {currency}</code>\n"
             f"💳 <b>Your Balance:</b> <code>{user_balance:.2f} {currency}</code>\n\n"
             f"⚠️ Insufficient balance to purchase. Refer more friends to earn USDT!"
         )
-        await query.edit_message_text(
-            text,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            await query.edit_message_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            await query.message.reply_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML
+            )
         return
 
-    # If requirements met: display full method content & details configured by Admin
+    # If unlocked: display method content with photo if present
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="user_main_menu")]
     ])
 
-    text = (
-        f"💎 <b>Gemini 18 Month Method (UNLOCKED)</b>\n\n"
-        f"{method_content}\n\n"
+    unlocked_text = (
+        f"💎 <b>{method['title']} (UNLOCKED)</b>\n\n"
+        f"{method['description']}\n\n"
         f"<i>Status: ✅ Verified & Active Access</i>"
     )
 
-    await query.edit_message_text(
-        text,
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True
-    )
+    photo_id = method.get("photo_file_id")
+    if photo_id:
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        await context.bot.send_photo(
+            chat_id=user_id,
+            photo=photo_id,
+            caption=unlocked_text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        try:
+            await query.edit_message_text(
+                unlocked_text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True
+            )
+        except Exception:
+            await query.message.reply_text(
+                unlocked_text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True
+            )
+
 
 
