@@ -183,7 +183,7 @@ def main():
         entry_points=[CallbackQueryHandler(admin_add_method_start, pattern="^admin_add_method$")],
         states={
             STATE_ADD_M_TITLE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_m_title_received)
+                MessageHandler(filters.ALL & ~filters.COMMAND, admin_add_m_title_received)
             ],
             STATE_ADD_M_CONTENT: [
                 MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, admin_add_m_content_received)

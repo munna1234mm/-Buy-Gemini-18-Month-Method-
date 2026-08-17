@@ -458,8 +458,57 @@ async def admin_add_method_start(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def admin_add_m_title_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles method title input."""
-    title = update.message.text.strip()
+    """Handles method title or direct photo/post forward."""
+    msg = update.message
+    if not msg:
+        return STATE_ADD_M_TITLE
+
+    # If admin sent a photo with caption right away (or forwarded a photo post)
+    if msg.photo:
+        photo_file_id = msg.photo[-1].file_id
+        caption = msg.caption_html if msg.caption_html else (msg.caption or "")
+        
+        # Extract title from caption first line, or use default
+        lines = [l.strip() for l in caption.split("\n") if l.strip()]
+        title = lines[0][:45] if lines else "Premium Method"
+        desc = caption if caption else "Premium Method Tutorial & Details."
+
+        context.user_data["new_m_title"] = title
+        context.user_data["new_m_photo"] = photo_file_id
+        context.user_data["new_m_desc"] = desc
+
+        text = (
+            f"✅ <b>Detected Title:</b> <code>{title}</code>\n"
+            f"🖼 <b>Photo & Content Saved!</b>\n\n"
+            f"Step 3/4: Send the <b>Required Referrals</b> number to unlock this method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
+            f"Send /cancel to abort."
+        )
+        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
+        return STATE_ADD_M_REFS
+
+    # If admin sent text
+    raw_text = msg.text_html if msg.text_html else (msg.text or "")
+    plain_text = msg.text or ""
+    lines = [l.strip() for l in plain_text.split("\n") if l.strip()]
+
+    # If multi-line post forwarded as text
+    if len(lines) > 2 or len(plain_text) > 80:
+        title = lines[0][:45]
+        context.user_data["new_m_title"] = title
+        context.user_data["new_m_photo"] = ""
+        context.user_data["new_m_desc"] = raw_text
+
+        text = (
+            f"✅ <b>Detected Title:</b> <code>{title}</code>\n"
+            f"📝 <b>Content Guide Saved!</b>\n\n"
+            f"Step 3/4: Send the <b>Required Referrals</b> number to unlock this method (e.g. <code>5</code>, <code>10</code>, or <code>0</code> for free):\n\n"
+            f"Send /cancel to abort."
+        )
+        await update.message.reply_text(text, reply_markup=get_cancel_keyboard("admin_methods"), parse_mode=ParseMode.HTML)
+        return STATE_ADD_M_REFS
+
+    # Normal single-line title
+    title = plain_text.strip()
     context.user_data["new_m_title"] = title
     
     text = (
@@ -475,6 +524,9 @@ async def admin_add_m_title_received(update: Update, context: ContextTypes.DEFAU
 async def admin_add_m_content_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles method content (Text or Photo with caption)."""
     msg = update.message
+    if not msg:
+        return STATE_ADD_M_CONTENT
+        
     photo_file_id = ""
     description = ""
     
