@@ -191,10 +191,15 @@ async def user_ref_link_callback(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
 
-    user_id = update.effective_user.id
-    user = database.get_user(user_id)
-    if not user:
+    eff_user = update.effective_user
+    if not eff_user:
         return
+    user_id = eff_user.id
+    user, _ = database.get_or_create_user(
+        user_id=user_id,
+        username=eff_user.username,
+        first_name=eff_user.first_name
+    )
 
     bot_info = await context.bot.get_me()
     bot_username = bot_info.username
@@ -246,10 +251,15 @@ async def user_balance_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
 
-    user_id = update.effective_user.id
-    user = database.get_user(user_id)
-    if not user:
+    eff_user = update.effective_user
+    if not eff_user:
         return
+    user_id = eff_user.id
+    user, _ = database.get_or_create_user(
+        user_id=user_id,
+        username=eff_user.username,
+        first_name=eff_user.first_name
+    )
 
     currency = database.get_setting("currency_name", config.CURRENCY_NAME)
     balance = float(user.get("balance", 0.0))
@@ -285,10 +295,15 @@ async def user_method_details_callback(update: Update, context: ContextTypes.DEF
     query = update.callback_query
     await query.answer()
 
-    user_id = update.effective_user.id
-    user = database.get_user(user_id)
-    if not user:
+    eff_user = update.effective_user
+    if not eff_user:
         return
+    user_id = eff_user.id
+    user, _ = database.get_or_create_user(
+        user_id=user_id,
+        username=eff_user.username,
+        first_name=eff_user.first_name
+    )
 
     data = query.data
     try:
