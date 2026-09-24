@@ -14,7 +14,7 @@ def firebase_sync_async(path: str, data: Any, method: str = "PUT"):
     def _task():
         if not config.FIREBASE_DATABASE_URL:
             return
-        url = f"{config.FIREBASE_DATABASE_URL}/{path.strip('/')}.json"
+        url = f"{config.FIREBASE_DATABASE_URL}/gemini_18_month_bot/{path.strip('/')}.json"
         try:
             if method == "PUT":
                 requests.put(url, json=data, timeout=5)
@@ -32,7 +32,7 @@ def firebase_fetch(path: str) -> Optional[Any]:
     """Fetches data from Firebase Realtime Database."""
     if not config.FIREBASE_DATABASE_URL:
         return None
-    url = f"{config.FIREBASE_DATABASE_URL}/{path.strip('/')}.json"
+    url = f"{config.FIREBASE_DATABASE_URL}/gemini_18_month_bot/{path.strip('/')}.json"
     try:
         r = requests.get(url, timeout=5)
         if r.status_code == 200:
@@ -141,10 +141,18 @@ def init_db():
 
         cursor.execute("SELECT COUNT(*) as count FROM methods")
         if cursor.fetchone()["count"] == 0:
-            cursor.execute("""
-                INSERT INTO methods (id, title, description, photo_file_id, required_referrals, price)
-                VALUES (1, '💎 Gemini 18 Month Method', ?, '', 5, 0.0)
-            """, ("🌟 <b>Gemini 18 Month Method Guide</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Gemini 18 Month Method.\n\n<b>Details / Steps:</b>\n1. Follow the official setup guide.\n2. Apply the configuration.\n3. Enjoy 18 months access!\n\nFor support, contact admin.",))
+            default_methods = [
+                ("💎 Gemini 18 Month Method", "🌟 <b>Gemini 18 Month Method Guide</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Gemini 18 Month Method.\n\n<b>Details / Steps:</b>\n1. Follow the official setup guide.\n2. Apply the configuration.\n3. Enjoy 18 months access!\n\nFor support, contact admin.", "", 5, 0.0),
+                ("Google AI Plus — free 12 months New Method", "🌟 <b>Google AI Plus Method Guide</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Google AI Plus 12-Month Method.\n\n<b>Details / Steps:</b>\n1. Follow the verification guide.\n2. Apply the promo link.\n3. Enjoy 12 months access!\n\nFor support, contact admin.", "", 5, 0.0),
+                ("Gemini Pro students verification Method", "🌟 <b>Gemini Pro Student Verification Method</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Gemini Pro Student Method.\n\n<b>Details / Steps:</b>\n1. Use valid student verification credentials.\n2. Claim Gemini Pro status.\n3. Enjoy premium features!\n\nFor support, contact admin.", "", 5, 0.0),
+                ("💎 Free 48-Month ChatGPT Business Subscription", "🌟 <b>ChatGPT Business 48-Month Method</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the ChatGPT Business Subscription Method.\n\n<b>Details / Steps:</b>\n1. Follow the business setup guide.\n2. Apply the enterprise invitation.\n3. Enjoy 48 months access!\n\nFor support, contact admin.", "", 5, 0.0),
+                ("Super Duolingo 2 month method", "🌟 <b>Super Duolingo 2-Month Method</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Super Duolingo Method.\n\n<b>Details / Steps:</b>\n1. Join the family plan link.\n2. Activate your Super Duolingo subscription.\n3. Enjoy learning!\n\nFor support, contact admin.", "", 5, 0.0)
+            ]
+            for title, desc, photo, refs, pr in default_methods:
+                cursor.execute("""
+                    INSERT INTO methods (title, description, photo_file_id, required_referrals, price)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (title, desc, photo, refs, pr))
             conn.commit()
             
     logger.info("Database initialized & synced with Firebase successfully.")
