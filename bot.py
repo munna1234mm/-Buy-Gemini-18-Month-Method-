@@ -315,6 +315,7 @@ def main():
     print("==================================================")
     
     app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
         bootstrap_retries=-1,
         poll_interval=1.0,
