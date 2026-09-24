@@ -329,6 +329,49 @@ async def user_method_details_callback(update: Update, context: ContextTypes.DEF
     user_refs = user.get("referral_count", 0)
     user_balance = float(user.get("balance", 0.0))
 
+    # 1. Check if user already purchased / unlocked this method
+    is_purchased = database.has_user_purchased(user_id, method_id)
+    if is_purchased or (required_refs == 0 and method_price == 0.0):
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="user_main_menu")]
+        ])
+        unlocked_text = (
+            f"💎 <b>{method['title']} (UNLOCKED)</b>\n\n"
+            f"{method['description']}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>Status: ✅ Permanent Access Unlocked</i>"
+        )
+        photo_id = method.get("photo_file_id")
+        if photo_id:
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            await context.bot.send_photo(
+                chat_id=user_id,
+                photo=photo_id,
+                caption=unlocked_text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            try:
+                await query.edit_message_text(
+                    unlocked_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.HTML,
+                    disable_web_page_preview=True
+                )
+            except Exception:
+                await query.message.reply_text(
+                    unlocked_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.HTML,
+                    disable_web_page_preview=True
+                )
+        return
+
+    # 2. Check Referral Requirement
     if user_refs < required_refs:
         remaining = required_refs - user_refs
         keyboard = InlineKeyboardMarkup([
@@ -337,63 +380,163 @@ async def user_method_details_callback(update: Update, context: ContextTypes.DEF
         ])
         text = (
             f"🔒 <b>{method['title']} is Locked!</b>\n\n"
-            f"⚠️ <b>Referral Requirement:</b>\n"
-            f"You need at least <b>{required_refs} referrals</b> to unlock this method.\n\n"
-            f"📊 <b>Your Progress:</b>\n"
+            f"📋 <b>Requirements to Unlock:</b>\n"
+            f"👥 Required Referrals: <b>{required_refs} invites</b>\n"
+            f"💵 Method Price: <b>{method_price:.2f} {currency}</b>\n\n"
+            f"📊 <b>Your Current Progress:</b>\n"
             f"• Current Referrals: <code>{user_refs} / {required_refs}</code>\n"
-            f"• Still Needed: <b>{remaining} more friend(s)</b>\n\n"
-            f"<i>Invite your friends using your referral link to unlock full access!</i>"
+            f"• Still Needed: <b>{remaining} more friend(s)</b>\n"
+            f"• Your Balance: <code>{user_balance:.2f} {currency}</code>\n\n"
+            f"<i>Invite your friends using your referral link to reach {required_refs} referrals and unlock this method!</i>"
         )
         try:
-            await query.edit_message_text(
-                text,
-                reply_markup=keyboard,
-                parse_mode=ParseMode.HTML
-            )
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
         except Exception:
-            await query.message.reply_text(
-                text,
-                reply_markup=keyboard,
-                parse_mode=ParseMode.HTML
-            )
+            await query.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
         return
 
-    # If price is required and balance is not enough
-    if method_price > 0 and user_balance < method_price:
+    # 3. Referral Requirement Met - Check Price
+    if method_price <= 0.0:
+        # Free method with referrals met - record purchase and deliver
+        database.record_purchase(user_id, method_id, 0.0, method['title'])
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="user_main_menu")]
+        ])
+        unlocked_text = (
+            f"🎉 <b>Method Unlocked!</b>\n\n"
+            f"💎 <b>{method['title']}</b>\n\n"
+            f"{method['description']}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>Status: ✅ Free Access Unlocked via Referrals</i>"
+        )
+        photo_id = method.get("photo_file_id")
+        if photo_id:
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            await context.bot.send_photo(
+                chat_id=user_id,
+                photo=photo_id,
+                caption=unlocked_text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            try:
+                await query.edit_message_text(unlocked_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+            except Exception:
+                await query.message.reply_text(unlocked_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        return
+
+    # Method requires USDT payment
+    if user_balance < method_price:
+        needed = method_price - user_balance
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔗 Earn by Referring", callback_data="user_ref_link")],
+            [InlineKeyboardButton("💰 Check Balance", callback_data="user_balance")],
             [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="user_main_menu")]
         ])
         text = (
             f"💎 <b>{method['title']}</b>\n\n"
-            f"✅ Referral Requirement Met ({user_refs}/{required_refs} invites)!\n"
+            f"✅ <b>Referral Requirement Met:</b> <code>{user_refs}/{required_refs} invites</code>\n\n"
             f"💵 <b>Price:</b> <code>{method_price:.2f} {currency}</code>\n"
-            f"💳 <b>Your Balance:</b> <code>{user_balance:.2f} {currency}</code>\n\n"
-            f"⚠️ Insufficient balance to purchase. Refer more friends to earn USDT!"
+            f"💳 <b>Your Balance:</b> <code>{user_balance:.2f} {currency}</code>\n"
+            f"⚠️ <b>Balance Needed:</b> <code>{needed:.2f} {currency}</code>\n\n"
+            f"<i>You do not have enough {currency} to buy this method. Invite friends using your referral link to earn more balance!</i>"
         )
         try:
-            await query.edit_message_text(
-                text,
-                reply_markup=keyboard,
-                parse_mode=ParseMode.HTML
-            )
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
         except Exception:
-            await query.message.reply_text(
-                text,
-                reply_markup=keyboard,
-                parse_mode=ParseMode.HTML
-            )
+            await query.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
         return
 
-    # If unlocked: display method content with photo if present
+    # Balance is sufficient - Show Buy / Unlock confirmation button
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"💳 Buy / Unlock with {method_price:.2f} {currency}", callback_data=f"buy_method_{method_id}")],
+        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="user_main_menu")]
+    ])
+    text = (
+        f"💎 <b>{method['title']}</b>\n\n"
+        f"✅ <b>Referral Requirement Met:</b> <code>{user_refs}/{required_refs} invites</code>\n\n"
+        f"💵 <b>Price:</b> <code>{method_price:.2f} {currency}</code>\n"
+        f"💳 <b>Your Balance:</b> <code>{user_balance:.2f} {currency}</code>\n"
+        f"💰 <b>Remaining After Purchase:</b> <code>{user_balance - method_price:.2f} {currency}</code>\n\n"
+        f"<i>Click the button below to confirm your purchase and permanently unlock this method:</i>"
+    )
+    try:
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    except Exception:
+        await query.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+
+async def buy_method_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles purchase confirmation and balance deduction for a method."""
+    query = update.callback_query
+    await query.answer()
+
+    eff_user = update.effective_user
+    if not eff_user:
+        return
+    user_id = eff_user.id
+    user = database.get_user(user_id)
+    if not user:
+        return
+
+    data = query.data
+    try:
+        method_id = int(data.split("_")[2])
+    except (IndexError, ValueError):
+        return
+
+    method = database.get_method(method_id)
+    if not method:
+        await query.answer("❌ This method is no longer available.", show_alert=True)
+        return
+
+    # Check if already purchased
+    if database.has_user_purchased(user_id, method_id):
+        await query.answer("✅ You have already purchased this method!", show_alert=True)
+        await user_method_details_callback(update, context)
+        return
+
+    required_refs = int(method.get("required_referrals", 0))
+    method_price = float(method.get("price", 0.0))
+    currency = database.get_setting("currency_name", config.CURRENCY_NAME)
+    user_refs = user.get("referral_count", 0)
+    user_balance = float(user.get("balance", 0.0))
+
+    if user_refs < required_refs:
+        await query.answer(f"❌ You need {required_refs} referrals to buy this method.", show_alert=True)
+        await user_method_details_callback(update, context)
+        return
+
+    if user_balance < method_price:
+        await query.answer(f"❌ Insufficient balance! You need {method_price:.2f} {currency}.", show_alert=True)
+        await user_method_details_callback(update, context)
+        return
+
+    # Deduct balance and record purchase
+    if method_price > 0:
+        database.update_balance(user_id, -method_price)
+    database.record_purchase(user_id, method_id, method_price, method['title'])
+
+    new_balance = max(0.0, user_balance - method_price)
+    await query.answer(f"🎉 Purchase successful! Unlocked {method['title']}", show_alert=True)
+
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="user_main_menu")]
     ])
 
-    unlocked_text = (
+    congrats_text = (
+        f"🎉 <b>Purchase Successful!</b>\n\n"
+        f"💰 <b>Amount Deducted:</b> <code>{method_price:.2f} {currency}</code>\n"
+        f"💳 <b>New Balance:</b> <code>{new_balance:.2f} {currency}</code>\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"💎 <b>{method['title']} (UNLOCKED)</b>\n\n"
         f"{method['description']}\n\n"
-        f"<i>Status: ✅ Verified & Active Access</i>"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"<i>Status: ✅ Permanent Access Unlocked</i>"
     )
 
     photo_id = method.get("photo_file_id")
@@ -405,25 +548,26 @@ async def user_method_details_callback(update: Update, context: ContextTypes.DEF
         await context.bot.send_photo(
             chat_id=user_id,
             photo=photo_id,
-            caption=unlocked_text,
+            caption=congrats_text,
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML
         )
     else:
         try:
             await query.edit_message_text(
-                unlocked_text,
+                congrats_text,
                 reply_markup=keyboard,
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True
             )
         except Exception:
             await query.message.reply_text(
-                unlocked_text,
+                congrats_text,
                 reply_markup=keyboard,
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True
             )
+
 
 
 

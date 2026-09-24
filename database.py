@@ -120,16 +120,29 @@ def init_db():
             )
         """)
 
+        # Purchases table (tracks unlocked/purchased methods per user)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_purchases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                method_id INTEGER NOT NULL,
+                amount_paid REAL DEFAULT 0.0,
+                method_title TEXT DEFAULT '',
+                purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, method_id)
+            )
+        """)
+
         # Pre-seed initial config admins
         for admin_id in config.ADMIN_IDS:
             cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (admin_id,))
             
         conn.commit()
 
-    # Restore from Firebase Cloud Storage so all methods, users, channels, and logs are loaded
+    # Restore from Firebase Cloud Storage so all methods, users, channels, purchases, and logs are loaded
     restore_from_firebase()
 
-    # Set default fallback settings/methods only if database is completely empty
+    # Set default settings without overwriting admin data
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
@@ -138,22 +151,7 @@ def init_db():
                        ("referral_reward", str(config.DEFAULT_REFERRAL_REWARD)))
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", 
                        ("min_withdraw", "5"))
-
-        cursor.execute("SELECT COUNT(*) as count FROM methods")
-        if cursor.fetchone()["count"] == 0:
-            default_methods = [
-                ("💎 Gemini 18 Month Method", "🌟 <b>Gemini 18 Month Method Guide</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Gemini 18 Month Method.\n\n<b>Details / Steps:</b>\n1. Follow the official setup guide.\n2. Apply the configuration.\n3. Enjoy 18 months access!\n\nFor support, contact admin.", "", 5, 0.0),
-                ("Google AI Plus — free 12 months New Method", "🌟 <b>Google AI Plus Method Guide</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Google AI Plus 12-Month Method.\n\n<b>Details / Steps:</b>\n1. Follow the verification guide.\n2. Apply the promo link.\n3. Enjoy 12 months access!\n\nFor support, contact admin.", "", 5, 0.0),
-                ("Gemini Pro students verification Method", "🌟 <b>Gemini Pro Student Verification Method</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Gemini Pro Student Method.\n\n<b>Details / Steps:</b>\n1. Use valid student verification credentials.\n2. Claim Gemini Pro status.\n3. Enjoy premium features!\n\nFor support, contact admin.", "", 5, 0.0),
-                ("💎 Free 48-Month ChatGPT Business Subscription", "🌟 <b>ChatGPT Business 48-Month Method</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the ChatGPT Business Subscription Method.\n\n<b>Details / Steps:</b>\n1. Follow the business setup guide.\n2. Apply the enterprise invitation.\n3. Enjoy 48 months access!\n\nFor support, contact admin.", "", 5, 0.0),
-                ("Super Duolingo 2 month method", "🌟 <b>Super Duolingo 2-Month Method</b>\n\n🎉 <b>Congratulations!</b> You have unlocked the Super Duolingo Method.\n\n<b>Details / Steps:</b>\n1. Join the family plan link.\n2. Activate your Super Duolingo subscription.\n3. Enjoy learning!\n\nFor support, contact admin.", "", 5, 0.0)
-            ]
-            for title, desc, photo, refs, pr in default_methods:
-                cursor.execute("""
-                    INSERT INTO methods (title, description, photo_file_id, required_referrals, price)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (title, desc, photo, refs, pr))
-            conn.commit()
+        conn.commit()
             
     logger.info("Database initialized & synced with Firebase successfully.")
 
@@ -213,20 +211,35 @@ def restore_from_firebase():
                         chdata.get("invite_link", "")
                     ))
 
+            # Restore Admins
+            fb_admins = fb_data.get("admins")
+            if isinstance(fb_admins, dict):
+                for admin_str, val in fb_admins.items():
+                    if str(admin_str).isdigit() and val:
+                        cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (int(admin_str),))
+
             # Restore Methods
-            for mdata in to_list_of_dicts(fb_data.get("methods")):
-                if "title" in mdata:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO methods (id, title, description, photo_file_id, required_referrals, price)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (
-                        mdata.get("id"),
-                        mdata["title"],
-                        mdata.get("description", ""),
-                        mdata.get("photo_file_id", ""),
-                        mdata.get("required_referrals", 5),
-                        mdata.get("price", 0.0)
-                    ))
+            fb_methods_raw = fb_data.get("methods")
+            if fb_methods_raw:
+                methods_list = to_list_of_dicts(fb_methods_raw)
+                # Keep local SQLite in exact sync with Firebase methods
+                if methods_list:
+                    valid_ids = [m["id"] for m in methods_list if "id" in m]
+                    if valid_ids:
+                        cursor.execute(f"DELETE FROM methods WHERE id NOT IN ({','.join(['?']*len(valid_ids))})", valid_ids)
+                    for mdata in methods_list:
+                        if "title" in mdata:
+                            cursor.execute("""
+                                INSERT OR REPLACE INTO methods (id, title, description, photo_file_id, required_referrals, price)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (
+                                mdata.get("id"),
+                                mdata["title"],
+                                mdata.get("description", ""),
+                                mdata.get("photo_file_id", ""),
+                                mdata.get("required_referrals", 5),
+                                mdata.get("price", 0.0)
+                            ))
 
             # Restore Referral Logs
             for logdata in to_list_of_dicts(fb_data.get("referral_logs")):
@@ -241,6 +254,20 @@ def restore_from_firebase():
                         logdata.get("reward", 0.0),
                         logdata.get("status", "completed")
                     ))
+
+            # Restore Purchases
+            fb_purchases = fb_data.get("purchases")
+            if fb_purchases:
+                for pdata in to_list_of_dicts(fb_purchases):
+                    uid = pdata.get("user_id")
+                    mid = pdata.get("method_id")
+                    if uid and mid:
+                        amt = float(pdata.get("amount_paid") or pdata.get("total_price") or 0.0)
+                        title = pdata.get("method_title") or pdata.get("product_title") or ""
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO user_purchases (user_id, method_id, amount_paid, method_title)
+                            VALUES (?, ?, ?, ?)
+                        """, (uid, mid, amt, title))
 
             conn.commit()
             logger.info("Successfully restored and synced cloud data from Firebase.")
@@ -656,6 +683,11 @@ def get_stats() -> Dict[str, Any]:
         row = cursor.fetchone()
         total_referrals = row["total_referrals"] or 0
         total_balance = row["total_balance"] or 0.0
+
+        cursor.execute("SELECT COUNT(*) as total_purchases, SUM(amount_paid) as total_sales FROM user_purchases")
+        prow = cursor.fetchone()
+        total_purchases = prow["total_purchases"] or 0
+        total_sales = prow["total_sales"] or 0.0
         
         return {
             "total_users": total_users,
@@ -663,6 +695,56 @@ def get_stats() -> Dict[str, Any]:
             "total_channels": total_channels,
             "total_methods": total_methods,
             "total_referrals": total_referrals,
-            "total_balance": round(total_balance, 2)
+            "total_balance": round(total_balance, 2),
+            "total_purchases": total_purchases,
+            "total_sales": round(total_sales, 2)
         }
+
+
+# --- USER PURCHASES & METHOD UNLOCK OPERATIONS ---
+
+def has_user_purchased(user_id: int, method_id: int) -> bool:
+    """Checks if a user has already purchased/unlocked a specific method."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM user_purchases WHERE user_id = ? AND method_id = ?", (user_id, method_id))
+        return cursor.fetchone() is not None
+
+
+def record_purchase(user_id: int, method_id: int, amount_paid: float, method_title: str = "") -> bool:
+    """Records a method purchase and syncs to Firebase."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT OR REPLACE INTO user_purchases (user_id, method_id, amount_paid, method_title)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, method_id, amount_paid, method_title))
+            conn.commit()
+
+            # Sync purchase record to Firebase
+            purchase_key = f"{user_id}_{method_id}"
+            firebase_sync_async(f"purchases/{purchase_key}", {
+                "user_id": user_id,
+                "method_id": method_id,
+                "amount_paid": amount_paid,
+                "method_title": method_title,
+                "total_price": amount_paid,
+                "status": "completed"
+            }, "PUT")
+            return True
+        except Exception as e:
+            logger.error(f"Error recording purchase: {e}")
+            return False
+
+
+def get_user_purchases(user_id: int) -> List[Dict[str, Any]]:
+    """Returns list of all methods purchased by this user."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM user_purchases WHERE user_id = ? ORDER BY purchased_at DESC
+        """, (user_id,))
+        return [dict(r) for r in cursor.fetchall()]
+
 

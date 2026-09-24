@@ -23,7 +23,8 @@ from handlers.user import (
     user_main_menu_callback,
     user_ref_link_callback,
     user_balance_callback,
-    user_method_details_callback
+    user_method_details_callback,
+    buy_method_callback
 )
 from handlers.admin import (
     admin_command_handler,
@@ -286,6 +287,7 @@ def main():
     # 2. Callback Query Handlers (User Navigation & Admin Menus)
     app.add_handler(CallbackQueryHandler(check_join_callback_handler, pattern="^check_join$"))
     app.add_handler(CallbackQueryHandler(user_main_menu_callback, pattern="^user_main_menu$"))
+    app.add_handler(CallbackQueryHandler(buy_method_callback, pattern="^buy_method_"))
     app.add_handler(CallbackQueryHandler(user_method_details_callback, pattern="^user_method_"))
     app.add_handler(CallbackQueryHandler(user_ref_link_callback, pattern="^user_ref_link$"))
     app.add_handler(CallbackQueryHandler(user_balance_callback, pattern="^user_balance$"))

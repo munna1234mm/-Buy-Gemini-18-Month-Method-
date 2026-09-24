@@ -64,6 +64,7 @@ async def admin_command_handler(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     stats = database.get_stats()
+    currency = database.get_setting("currency_name", config.CURRENCY_NAME)
     text = (
         f"🛠 <b>Admin Control Panel</b>\n\n"
         f"👥 <b>Total Users:</b> <code>{stats['total_users']}</code>\n"
@@ -71,7 +72,9 @@ async def admin_command_handler(update: Update, context: ContextTypes.DEFAULT_TY
         f"📢 <b>Active Channels/Groups:</b> <code>{stats['total_channels']}</code>\n"
         f"📚 <b>Active Methods:</b> <code>{stats.get('total_methods', 1)}</code>\n"
         f"🏆 <b>Total Referrals:</b> <code>{stats['total_referrals']}</code>\n"
-        f"💰 <b>Total Balance Issued:</b> <code>{stats['total_balance']}</code>\n\n"
+        f"💰 <b>Total Balance Issued:</b> <code>{stats['total_balance']} {currency}</code>\n"
+        f"🛒 <b>Method Purchases:</b> <code>{stats.get('total_purchases', 0)}</code>\n"
+        f"💵 <b>Total Method Sales:</b> <code>{stats.get('total_sales', 0.0)} {currency}</code>\n\n"
         f"<i>Select an option from the menu below:</i>"
     )
 
@@ -109,6 +112,7 @@ async def admin_menu_callback_handler(update: Update, context: ContextTypes.DEFA
 
     if data == "admin_main" or data == "admin_stats":
         stats = database.get_stats()
+        currency = database.get_setting("currency_name", config.CURRENCY_NAME)
         text = (
             f"🛠 <b>Admin Control Panel</b>\n\n"
             f"👥 <b>Total Users:</b> <code>{stats['total_users']}</code>\n"
@@ -116,7 +120,9 @@ async def admin_menu_callback_handler(update: Update, context: ContextTypes.DEFA
             f"📢 <b>Active Channels/Groups:</b> <code>{stats['total_channels']}</code>\n"
             f"📚 <b>Active Methods:</b> <code>{stats.get('total_methods', 1)}</code>\n"
             f"🏆 <b>Total Referrals:</b> <code>{stats['total_referrals']}</code>\n"
-            f"💰 <b>Total Balance Issued:</b> <code>{stats['total_balance']}</code>\n\n"
+            f"💰 <b>Total Balance Issued:</b> <code>{stats['total_balance']} {currency}</code>\n"
+            f"🛒 <b>Method Purchases:</b> <code>{stats.get('total_purchases', 0)}</code>\n"
+            f"💵 <b>Total Method Sales:</b> <code>{stats.get('total_sales', 0.0)} {currency}</code>\n\n"
             f"<i>Select an option below:</i>"
         )
         try:
