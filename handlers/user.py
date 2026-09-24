@@ -155,6 +155,8 @@ async def user_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
 
     user = update.effective_user
+    if not user:
+        return
     user_id = user.id
     first_name = user.first_name or "Friend"
     is_admin_user = database.is_admin(user_id)
@@ -165,11 +167,23 @@ async def user_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_
         f"Invite your friends and earn rewards!\n\n"
         f"<i>Select an option from the menu below:</i>"
     )
-    await query.edit_message_text(
-        welcome_text,
-        reply_markup=get_user_inline_menu(is_admin_user=is_admin_user),
-        parse_mode=ParseMode.HTML
-    )
+    try:
+        await query.edit_message_text(
+            welcome_text,
+            reply_markup=get_user_inline_menu(is_admin_user=is_admin_user),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=welcome_text,
+            reply_markup=get_user_inline_menu(is_admin_user=is_admin_user),
+            parse_mode=ParseMode.HTML
+        )
 
 
 async def user_ref_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -206,12 +220,25 @@ async def user_ref_link_callback(update: Update, context: ContextTypes.DEFAULT_T
         f"<i>Share this invite link with your friends. Once they join all required channels and verify, you will instantly receive your reward!</i>"
     )
 
-    await query.edit_message_text(
-        text,
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True
-    )
+    try:
+        await query.edit_message_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True
+        )
+    except Exception:
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True
+        )
 
 
 async def user_balance_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -234,11 +261,23 @@ async def user_balance_callback(update: Update, context: ContextTypes.DEFAULT_TY
         f"👥 <b>Total Referrals:</b> <code>{referral_count}</code>\n"
     )
 
-    await query.edit_message_text(
-        text,
-        reply_markup=get_back_to_user_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
+    try:
+        await query.edit_message_text(
+            text,
+            reply_markup=get_back_to_user_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=text,
+            reply_markup=get_back_to_user_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
 
 
 async def user_method_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
