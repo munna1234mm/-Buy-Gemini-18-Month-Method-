@@ -289,7 +289,7 @@ def main():
     app.add_handler(CallbackQueryHandler(user_method_details_callback, pattern="^user_method_"))
     app.add_handler(CallbackQueryHandler(user_ref_link_callback, pattern="^user_ref_link$"))
     app.add_handler(CallbackQueryHandler(user_balance_callback, pattern="^user_balance$"))
-    app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^admin_"))
+    app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^(admin_main|admin_stats|admin_channels|admin_methods|admin_close)$"))
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^manage_method_"))
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^del_method_"))
     app.add_handler(CallbackQueryHandler(admin_menu_callback_handler, pattern="^del_channel_"))
