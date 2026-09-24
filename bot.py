@@ -4,7 +4,7 @@ import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -108,6 +108,18 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error("Exception while handling an update:", exc_info=context.error)
 
 
+async def post_init(application):
+    """Sets the Telegram native Menu button to show only /start command."""
+    commands = [
+        BotCommand("start", "🚀 Start Bot / Open Main Menu")
+    ]
+    try:
+        await application.bot.set_my_commands(commands)
+        logger.info("Bot menu button configured with /start only.")
+    except Exception as e:
+        logger.warning(f"Could not set bot commands: {e}")
+
+
 def main():
     # Start Keep-Alive HTTP server on a separate daemon thread
     threading.Thread(target=run_health_server, daemon=True).start()
@@ -124,6 +136,7 @@ def main():
         ApplicationBuilder()
         .token(config.BOT_TOKEN)
         .concurrent_updates(32)
+        .post_init(post_init)
         .build()
     )
 
