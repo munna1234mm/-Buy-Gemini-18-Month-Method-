@@ -54,6 +54,10 @@ async def admin_command_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if not update.effective_user or not update.effective_message:
         return
 
+    # Admin commands should only run in private chat, never in public groups
+    if update.effective_chat and update.effective_chat.type != "private":
+        return
+
     if not await is_admin_authorized(update):
         await update.effective_message.reply_text(
             f"⛔ <b>Access Denied:</b> You are not an admin.\n\n"
@@ -364,6 +368,8 @@ async def add_channel_id_received(update: Update, context: ContextTypes.DEFAULT_
 
 async def add_channel_direct_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Direct shortcut command to add channels: /addchannel <link1> <link2>..."""
+    if update.effective_chat and update.effective_chat.type != "private":
+        return
     if not await is_admin_authorized(update):
         return
     msg = update.effective_message
@@ -429,32 +435,6 @@ async def add_channel_direct_command(update: Update, context: ContextTypes.DEFAU
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True
         )
-
-
-async def admin_auto_detect_channel_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """If an admin sends a channel link, username, or forwarded post outside conversations, auto-process and add it."""
-    user = update.effective_user
-    msg = update.effective_message
-    if not user or not msg or not await is_admin_authorized(update):
-        return
-
-    text = msg.text or msg.caption or ""
-    fwd_id = get_forward_chat_id(msg)
-    is_channel_input = False
-    if fwd_id:
-        is_channel_input = True
-    elif "t.me/" in text or "telegram.me/" in text or (text.strip().startswith("@") and " " not in text.strip()):
-        is_channel_input = True
-
-    if is_channel_input:
-        try:
-            return await add_channel_id_received(update, context)
-        except Exception as e:
-            logger.error(f"Error in auto detect channel: {e}")
-            try:
-                await msg.reply_text(f"⚠️ Could not process channel: {e}")
-            except Exception:
-                pass
 
 
 # --- SET REWARD CONVERSATION ---

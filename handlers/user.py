@@ -15,6 +15,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.effective_message:
         return
 
+    # Bot should only start in private chat with users, never spam public groups
+    if update.effective_chat and update.effective_chat.type != "private":
+        return
+
     user = update.effective_user
     user_id = user.id
     username = user.username or ""

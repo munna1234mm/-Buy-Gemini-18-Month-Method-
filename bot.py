@@ -32,7 +32,6 @@ from handlers.admin import (
     add_channel_start,
     add_channel_id_received,
     add_channel_direct_command,
-    admin_auto_detect_channel_message,
     set_reward_start,
     set_reward_received,
     broadcast_start,
@@ -304,9 +303,6 @@ def main():
     app.add_handler(edit_m_content_conv)
     app.add_handler(edit_m_refs_conv)
     app.add_handler(edit_m_price_conv)
-
-    # 4. Fallback Auto-detect Message Handlers (Non-commands only)
-    app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, admin_auto_detect_channel_message))
 
     # Error handling
     app.add_error_handler(error_handler)
