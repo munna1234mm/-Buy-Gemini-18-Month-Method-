@@ -14,7 +14,7 @@ def firebase_sync_async(path: str, data: Any, method: str = "PUT"):
     def _task():
         if not config.FIREBASE_DATABASE_URL:
             return
-        url = f"{config.FIREBASE_DATABASE_URL}/gemini_18_month_bot/{path.strip('/')}.json"
+        url = f"{config.FIREBASE_DATABASE_URL}/{path.strip('/')}.json"
         try:
             if method == "PUT":
                 requests.put(url, json=data, timeout=5)
@@ -32,7 +32,7 @@ def firebase_fetch(path: str) -> Optional[Any]:
     """Fetches data from Firebase Realtime Database."""
     if not config.FIREBASE_DATABASE_URL:
         return None
-    url = f"{config.FIREBASE_DATABASE_URL}/gemini_18_month_bot/{path.strip('/')}.json"
+    url = f"{config.FIREBASE_DATABASE_URL}/{path.strip('/')}.json"
     try:
         r = requests.get(url, timeout=5)
         if r.status_code == 200:
